@@ -440,7 +440,7 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
             if (copyError) Text("复制未完成，可手动记录上方的事件数字和窗口类型。", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { CaptureDiagnostics.clearCompatibilityCheck(); reportCopied = false; refreshCount++ }) { Text("清除窗口类型结果") }
         }
-        InformationCard("识别小样 · 真机待验证", "微信网页账单仅在完整栏目结构命中后尝试识别，结果进入待核对，不自动计入支出；来源与字段需你核对。普通网页不读取正文。微信、支付宝的其他支付、免密及后台扣费仍需逐项实测；没有可读信息时请手动补记。")
+        InformationCard("识别小样 · 真机待验证", "微信网页账单仅在完整栏目结构命中后尝试识别，结果进入待核对，不自动计入支出；来源与字段需你核对。网页筛选只比较有界短栏目，未匹配内容不解析、不保存。微信、支付宝的其他支付、免密及后台扣费仍需逐项实测；没有可读信息时请手动补记。")
         SettingsCard("隐私与数据") {
             Text("仅处理微信、支付宝必要交易页面和通知，开关关闭后停止处理。识别、分类和保存均在本地，不申请联网权限。")
             Text("不保存整屏原文、截图、聊天、密码或验证码。系统账目自动备份已禁用。")

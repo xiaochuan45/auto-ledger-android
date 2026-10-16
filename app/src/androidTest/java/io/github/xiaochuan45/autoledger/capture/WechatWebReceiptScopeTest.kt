@@ -4,7 +4,6 @@ import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
@@ -64,9 +63,8 @@ class WechatWebReceiptScopeTest {
         val automation = instrumentation.uiAutomation
         // Connect before constructing WebView so its provider observes accessibility enabled.
         val originalInfo = automation.serviceInfo
-        automation.serviceInfo = automation.serviceInfo.apply {
-            flags = flags or AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
-        }
+        // Match the production service's default flags, rather than giving the fixture extra nodes.
+        automation.serviceInfo = automation.serviceInfo.apply { flags = 0 }
         val loaded = CountDownLatch(1)
         try {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->

@@ -1,6 +1,6 @@
 package io.github.xiaochuan45.autoledger.core
 
-/** Narrow, version-dependent allowlists. General chat/web/launcher activities are not admitted. */
+/** Narrow native allowlists plus a separately scoped, review-only WeChat browser route. */
 object CapturePolicy {
     private val notificationTitles = mapOf(
         PaymentChannel.WECHAT to setOf("微信支付", "支付成功", "付款成功"),

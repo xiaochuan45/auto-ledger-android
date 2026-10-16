@@ -19,7 +19,7 @@ enum class CaptureSkip(val label: String) {
     WINDOW_UNSUPPORTED("页面类型尚不支持，未读取页面"), WINDOW_UNVERIFIED("没有已验证的付款窗口"),
     ROOT_UNAVAILABLE("系统未提供当前付款窗口"), WINDOW_CHANGED("当前窗口已变化"),
     WINDOW_ID_MISSING("系统窗口标识不可用"),
-    WEB_RECEIPT_SCOPE("微信网页未满足完整账单栏目结构，未读取正文"),
+    WEB_RECEIPT_SCOPE("微信网页未满足完整账单栏目，未进行字段识别"),
     PARSER_REJECTED("已读取输入，但没有可识别的交易证据"),
     COMPATIBILITY_ONLY("只读兼容性检查中，未读取付款内容或入账"),
 }
