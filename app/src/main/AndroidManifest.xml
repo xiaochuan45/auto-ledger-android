@@ -18,7 +18,33 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".capture.LedgerNotificationService"
+            android:exported="true"
+            android:label="@string/notification_service_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".capture.LedgerAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/ledger_accessibility_service" />
+        </service>
         <!-- Removal marker for a runtime dependency, not a runtime class reference. -->
+        <!-- All ledger components share one process; multi-instance IPC is unused. -->
+        <service
+            android:name="androidx.room.MultiInstanceInvalidationService"
+            tools:ignore="MissingClass"
+            tools:node="remove" />
         <receiver
             android:name="androidx.profileinstaller.ProfileInstallReceiver"
             tools:ignore="MissingClass"

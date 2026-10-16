@@ -1,3 +1,6 @@
 <resources>
-    <string name="app_name">本地账本·预览</string>
+    <string name="app_name">本地账本·小样</string>
+    <string name="accessibility_service_label">本地账本付款识别</string>
+    <string name="accessibility_service_description">仅在微信、支付宝的必要付款页面本地识别实付金额和交易信息。不会操作付款、读取聊天或保存页面全文，可随时在应用中关闭。</string>
+    <string name="notification_service_label">本地账本交易通知</string>
 </resources>

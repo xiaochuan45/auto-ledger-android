@@ -1,4 +1,4 @@
-name: Android preview
+name: Android verification
 
 on:
   push:
@@ -11,21 +11,35 @@ on:
       - '**/*.md'
       - 'docs/**'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Draft release tag: verify its exact signed APKs; blank runs ordinary source checks'
+        required: false
+        default: ''
+        type: string
+      certificate_sha256:
+        description: 'Public signing certificate SHA-256 fingerprint; required for a draft release verification'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: android-preview-${{ github.ref }}
+  group: android-verify-${{ github.ref }}-${{ inputs.release_tag || 'source' }}
   cancel-in-progress: true
 
 jobs:
   verify:
-    name: Build, audit, and emulator tests
+    name: Source tests and APK audit (API ${{ matrix.api }})
+    if: github.event_name != 'workflow_dispatch' || inputs.release_tag == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    outputs:
-      apk_artifact_id: ${{ steps.upload_apk.outputs.artifact-id }}
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [26, 35]
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -51,14 +65,13 @@ jobs:
       - name: Install compile SDK and build tools
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
 
-      - name: Build preview and run Android lint
-        run: ./gradlew --no-daemon --stacktrace assembleDebug lintDebug
+      - name: Run unit tests, build both variants, and lint
+        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest assembleDebug lintDebug assembleRelease
 
-      - name: Audit the actual installable APK
+      - name: Audit debug and unsigned release APKs
         run: |
-          mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/auto-ledger-preview.apk
-          python3 scripts/verify_apk.py --apk dist/auto-ledger-preview.apk --output-dir dist
+          python3 scripts/verify_apk.py --apk app/build/outputs/apk/debug/app-debug.apk --output-dir evidence/debug --build-type debug
+          python3 scripts/verify_apk.py --apk app/build/outputs/apk/release/app-release-unsigned.apk --output-dir evidence/release --build-type release --unsigned
 
       - name: Enable KVM access
         run: |
@@ -66,7 +79,89 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run launch and navigation tests on Android 15
+      - name: Run Room, permission, and UI tests on Android API ${{ matrix.api }}
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          force-avd-creation: true
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: ./gradlew --no-daemon --stacktrace connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=io.github.xiaochuan45.autoledger.data.UpgradePersistenceTest
+
+      - name: Upload audit evidence and test reports (no debug APK publication)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: source-verification-api${{ matrix.api }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            evidence/
+            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-debug.xml
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 30
+
+  verify_delivery:
+    name: Verify exact signed delivery and update (API 35)
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    # GitHub draft releases require a repository identity with push access.
+    # This job only downloads and verifies; publication is performed separately.
+    permissions:
+      contents: write
+    timeout-minutes: 45
+    steps:
+      - name: Check out verification scripts
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          cmdline-tools-version: '11076708'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install audit tools
+        run: sdkmanager 'build-tools;35.0.0'
+
+      - name: Download the draft's signed APKs (without rebuilding)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          CERTIFICATE_SHA256: ${{ inputs.certificate_sha256 }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$ ]] || { echo 'Invalid release tag'; exit 1; }
+          [[ "$CERTIFICATE_SHA256" =~ ^[0-9a-fA-F:]{64,95}$ ]] || { echo 'A public certificate fingerprint is required'; exit 1; }
+          mkdir -p delivery
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir delivery \
+            --pattern auto-ledger-prototype.apk \
+            --pattern auto-ledger-prototype.apk.sha256 \
+            --pattern verification-instrumentation.apk \
+            --pattern verification-upgrade.apk
+          (cd delivery && sha256sum --check auto-ledger-prototype.apk.sha256)
+          python3 scripts/verify_delivery_signatures.py --directory delivery --expected-cert-sha256 "$CERTIFICATE_SHA256"
+          python3 scripts/verify_apk.py --apk delivery/auto-ledger-prototype.apk --output-dir delivery/audit --build-type release --expected-cert-sha256 "$CERTIFICATE_SHA256"
+          python3 scripts/verify_apk.py --apk delivery/verification-upgrade.apk --output-dir delivery/upgrade-audit --build-type release --version-code 3 --expected-cert-sha256 "$CERTIFICATE_SHA256"
+
+      - name: Enable KVM access
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Test the actual signed delivery APK and retain data across an update
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 35
@@ -76,72 +171,22 @@ jobs:
           force-avd-creation: true
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: ./gradlew --no-daemon --stacktrace connectedDebugAndroidTest
+          script: bash scripts/verify_delivery.sh delivery
 
-      - name: Confirm the tested build still matches the audited APK
+      - name: Confirm the delivery bytes remain identical
         run: |
-          cmp app/build/outputs/apk/debug/app-debug.apk dist/auto-ledger-preview.apk
-          cd dist
-          sha256sum --check auto-ledger-preview.apk.sha256
+          (cd delivery && sha256sum --check auto-ledger-prototype.apk.sha256)
+          echo 'The signed APK was tested without rebuilding. Publication remains a separate action.' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload verified APK and audit evidence
-        id: upload_apk
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: preview-apk-${{ github.run_id }}-${{ github.run_attempt }}
-          path: dist/
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload lint and emulator test reports
+      - name: Upload signed delivery verification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: verification-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          name: signed-delivery-verification-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            app/build/reports/lint-results-debug.html
-            app/build/reports/lint-results-debug.xml
-            app/build/reports/androidTests/connected/
-            app/build/outputs/androidTest-results/connected/
+            delivery/audit/
+            delivery/upgrade-audit/
+            delivery/delivery-signatures.json
+            delivery/emulator-results/
           if-no-files-found: warn
           retention-days: 30
-
-  publish:
-    name: Publish install-only prerelease
-    needs: verify
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - name: Check out release notes
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - name: Download verified files
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          artifact-ids: ${{ needs.verify.outputs.apk_artifact_id }}
-          merge-multiple: true
-          path: dist
-
-      - name: Publish APK, checksum, and permission audit
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PREVIEW_TAG: preview-${{ github.run_id }}-${{ github.run_attempt }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          cd dist
-          sha256sum --check auto-ledger-preview.apk.sha256
-          cd ..
-          cp docs/RELEASE_PREVIEW.md "$RUNNER_TEMP/release-notes.md"
-          printf '\n\n源代码：`%s`\n\n云端验证记录：%s\n' "$GITHUB_SHA" "$RUN_URL" >> "$RUNNER_TEMP/release-notes.md"
-          gh release create "$PREVIEW_TAG" \
-            dist/auto-ledger-preview.apk \
-            dist/auto-ledger-preview.apk.sha256 \
-            dist/permissions-audit.md \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --prerelease \
-            --title "本地账本 · 安装预览 $PREVIEW_TAG" \
-            --notes-file "$RUNNER_TEMP/release-notes.md"

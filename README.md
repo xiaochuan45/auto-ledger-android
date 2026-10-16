@@ -4,7 +4,9 @@
 
 ## 当前进度
 
-第一阶段的云端构建、Lint、实际 APK 审计，以及 Android 15 模拟器启动和三个页面导航测试已通过（2 项测试，0 失败）。[安装预览版已发布](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/preview-38843855896-1)，当前云端已通过公开 Release 链接下载并核对 SHA-256；用户手机网络下载及真机安装启动仍待验证。
+第二阶段识别小样 `0.2.0-prototype` 代码已实现：本地交易识别、持久去重、待核对、手动补记与修改、删除撤销、权限状态及诊断。固定签名与最终 APK 验证进行中，下载链接将于通过后更新；当前下方已发布附件仍为第一阶段安装预览。详见 [第二阶段记录](docs/PHASE2_STATUS.md) 和 [手机权限与测试步骤](docs/PHASE2_TESTING.md)。
+
+第一阶段的云端构建、Lint、实际 APK 审计，以及 Android 15 模拟器启动和三个页面导航测试已通过（2 项测试，0 失败）。[安装预览版已发布](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/preview-38843855896-1)，用户已反馈在一加 Ace 5 安装、启动正常，具体系统版本与其他细项待补充。
 
 **[下载 APK：本地账本·预览 0.1.0-preview](https://github.com/xiaochuan45/auto-ledger-android/releases/download/preview-38843855896-1/auto-ledger-preview.apk)**，约 9.3 MB，最低 Android 8.0。安装方法、签名限制和校验值见 [云端编译与手机安装](docs/BUILD_AND_INSTALL.md)。
 
