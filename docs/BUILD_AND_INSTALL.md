@@ -4,7 +4,9 @@
 
 ## 当前访问状态（2026-10-16）
 
-仓库读取成功，但实际 `git push` 和 GitHub 写入接口均返回 **403**。仓库元数据中的 `push/admin` 标记不能证明本次连接确实有写权限。目前需要恢复该仓库对 Codex GitHub 连接的写入授权，才能把改动推送并触发下面的 Actions 流程。工作流文件已在开发工作区准备，不代表已经提交到仓库、编译通过或已经发布 APK。后续以真实执行结果更新本节。
+仓库写入授权已恢复：用户安装官方 [ChatGPT Codex Connector](https://github.com/apps/chatgpt-codex-connector) 并选择 All repositories，API 确认内容及工作流写入权限；实际 `git push` 已成功将 `main` 推进到 [`f31ff887521ee718d52b1f463874b1414c8c665a`](https://github.com/xiaochuan45/auto-ledger-android/commit/f31ff887521ee718d52b1f463874b1414c8c665a)。此前实际写入返回 403 的阻断已解决，排障历史保留在 [第一阶段记录](PHASE1_STATUS.md)。
+
+当前云端开发环境的编译、Lint、实际 APK 权限和签名审计已通过。[首轮 GitHub Actions](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38843736161) 已触发且正在运行；模拟器结果尚未确认，APK 尚未发布，下载及手机安装启动仍待验证。
 
 ## 云端构建方式
 
@@ -18,7 +20,7 @@ GitHub Actions 的 [Android preview 工作流](../.github/workflows/android.yml)
 
 本轮不依赖个人电脑。仓库依赖下载和编译发生在 GitHub 托管 runner；安装到手机后的应用不联网。第三方 Actions 均固定到提交 SHA。PR 只有读取仓库权限；仅发布 job 有 `contents: write`。
 
-首轮执行前，不能把工作流已配置等同于云端编译或模拟器测试通过。实际状态应查看本次 Actions run 和发布记录。
+当前工作流正在执行，不能把源码已推送或云端开发环境编译通过等同于 Actions 全部检查、模拟器测试或发布通过。实际状态应查看本次 Actions run 和发布记录。
 
 ## APK 下载
 
@@ -42,7 +44,7 @@ GitHub Actions 的 [Android preview 工作流](../.github/workflows/android.yml)
 
 本阶段使用 GitHub runner 生成的临时 Debug 签名，APK 可安装但不作为日常记账版本。不同构建的签名可能变化，因此可能无法直接覆盖安装，需要卸载旧预览后重装。**仅在确认安装的是这个无账单功能的预览应用时使用卸载重装。后续保存真实数据的版本不得用这种办法处理升级失败。**
 
-正式版开始保存账目前，应确定稳定的应用 ID、私密签名及安全保管方式，再验证覆盖升级保留数据。当前连接对 Actions secrets 管理接口的检查返回 403；仅凭此结果无法确定是令牌权限、组织策略还是仓库权限限制。这个限制不影响本轮临时签名预览构建。需要配置正式签名时，再提供具体的仓库设置步骤；不要把 keystore 或密码提交到公开仓库。
+正式版开始保存账目前，应确定稳定的应用 ID、私密签名及安全保管方式，再验证覆盖升级保留数据。官方应用的授权范围不包括 Secrets 管理或仓库 administration 权限；此前相应管理接口返回 403，与已经恢复的内容及工作流写入权限分开处理。这个限制不影响本轮临时签名预览。需要配置正式签名时，再提供具体的仓库设置步骤；不要把 keystore 或密码提交到公开仓库。
 
 应用声明 `allowBackup=false`，关闭旧版全量备份，并对 Android 12+ 的云备份与设备迁移规则明确排除所有数据域。实际 APK 审计还检查不存在 `INTERNET`、`ACCESS_NETWORK_STATE` 或其他系统敏感权限。AndroidX 如需要自身 signature 级内部接收器权限，会在审计中单独列出；它不提供网络能力。正式版的本地加密备份与恢复功能尚未实现。
 

@@ -22,7 +22,7 @@ concurrency:
 jobs:
   verify:
     name: Build, audit, and emulator tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     outputs:
       apk_artifact_id: ${{ steps.upload_apk.outputs.artifact-id }}
@@ -43,6 +43,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          cmdline-tools-version: '11076708'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
 
       - name: Install compile SDK and build tools
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
@@ -106,7 +110,7 @@ jobs:
     name: Publish install-only prerelease
     needs: verify
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
