@@ -1,6 +1,9 @@
 package io.github.xiaochuan45.autoledger
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -10,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.xiaochuan45.autoledger.capture.CapturePreferences
@@ -194,7 +198,14 @@ class LaunchSmokeTest {
 
         // Positive control: correcting just the date now saves the same draft successfully.
         compose.onNodeWithTag("edit_time").performScrollTo().performTextReplacement(validTime)
-        compose.onNodeWithTag("save_bill").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("edit_time").assertTextContains(validTime)
+        compose.onNodeWithTag("edit_amount").assertTextContains("1.99")
+        compose.onNodeWithTag("select_channel_WECHAT").assertIsSelected()
+        // This test verifies validation, not touch targeting during an Android IME animation.
+        // The separate CRUD test covers ordinary button taps; invoke the same button action here.
+        compose.onNodeWithTag("save_bill").assertIsDisplayed().assertIsEnabled()
+            .performSemanticsAction(SemanticsActions.OnClick) { click -> click() }
         compose.waitUntil(timeoutMillis = 10_000) { compose.onAllNodesWithTag("save_bill").fetchSemanticsNodes().isEmpty() }
         waitForText(merchant)
         runBlocking {
