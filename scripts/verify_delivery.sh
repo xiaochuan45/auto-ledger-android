@@ -44,6 +44,9 @@ if not re.search(r"\bversionCode=" + re.escape(sys.argv[2]) + r"\b", text):
 PY
 instrument seed-before-upgrade -e class "$upgrade_class#seedBeforeUpgrade"
 adb shell am force-stop "$app_id"
+# Prove the baseline survives process death on the old APK before attributing any loss to install -r.
+instrument verify-seed-after-restart -e class "$upgrade_class#seededOptInSurvivesProcessRestartBeforeInstallingUpdate"
+adb shell am force-stop "$app_id"
 adb install -r "$delivery_dir/auto-ledger-prototype.apk" | tee "$delivery_dir/emulator-results/upgrade-install.txt"
 instrument verify-after-upgrade -e class "$upgrade_class#dataSurvivesUpgrade"
 instrument release-suite -e notClass "$upgrade_class"

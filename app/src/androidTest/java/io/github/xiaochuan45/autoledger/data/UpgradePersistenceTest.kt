@@ -51,6 +51,18 @@ class UpgradePersistenceTest {
         } finally {
             database.close()
         }
+        // Production setters use apply(). Commit is a write barrier, not a replacement seed or test relaxation.
+        // Ensure queued async writes have reached disk before the harness force-stops the old app.
+        assertTrue("Seed preferences must flush before process death",
+            context.getSharedPreferences("capture_preferences", Context.MODE_PRIVATE).edit().commit())
+    }
+
+    @Test fun seededOptInSurvivesProcessRestartBeforeInstallingUpdate() {
+        // Separate instrumentation process on the public old APK: establish a durable pre-update baseline.
+        val settings = CapturePreferences(context).read()
+        assertTrue("Seed opt-in must exist on disk before installing an update", settings.enabled)
+        assertTrue("Seed channel opt-out must exist on disk", !settings.wechatEnabled)
+        assertTrue("Seed other channel must exist on disk", settings.alipayEnabled)
     }
 
     @Test fun dataSurvivesUpgrade() = runBlocking {
