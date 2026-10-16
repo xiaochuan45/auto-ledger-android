@@ -4,11 +4,11 @@
 
 ## 当前进度
 
-最新 `0.2.4-prototype` 修正微信网页字段合并、可选栏目和重复节点的准入问题，增加节点/过滤原因诊断与「读取一次已有微信账单」。0.2.3 真机旧详情仍失败：14 次栏目拒绝、解析 0；0.2.4 真机也未记录：一次读取超时、尝试 0 次，未到网页检查。本轮修复可复现差异，**尚未证明微信 8.0.78 / Android 16 的真实文字可读，也未证明拼多多付款自动入账已修复**。网页新记录始终待核对，确认前不计支出，不修改已有同交易号记录。依据见 [GitHub 对照调研](docs/WECHAT_ACCESSIBILITY_RESEARCH.md)。
+最新 `0.2.5-prototype` 补充商家页「交易详情」的主动单次读取。微信 8.0.78 / Android 16 的最新只读反馈确认该入口使用 `AppBrandPluginUI`；0.2.4 不支持，尝试为 0。新路径仅用户明确请求时检查当前小程序窗口，四项交易栏目齐全后才读取，不自动放开所有小程序、主界面或聊天。结果一律待核对，确认前不计支出，不修改已有同交易号记录。**真实微信字段可读性及拼多多付款自动入账尚未通过真机验证。** 依据见 [GitHub 对照调研](docs/WECHAT_ACCESSIBILITY_RESEARCH.md)。
 
-**[最新 APK：本地账本 0.2.4-prototype](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.4/auto-ledger-prototype.apk)**，约 7.16 MB，最低 Android 8.0；[发布页与证据](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.4)。同签名直接覆盖旧版，不卸载或清数据。结束只读检查 → 设置点「读取一次已有微信账单」→ 30 秒内退出并重新打开微信同一笔旧详情 → 查看待核对和复制诊断，无需再次消费，详见 [手机步骤](docs/PHASE2_TESTING.md)。
+**[最新 APK：本地账本 0.2.5-prototype](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.5/auto-ledger-prototype.apk)**，约 7.16 MB，最低 Android 8.0；[发布页与证据](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.5)。同签名直接覆盖旧版，不卸载或清数据。结束只读检查 → 微信准备好商家「交易详情」→ 回账本设置点「读取一次已有微信账单」→ 30 秒内切回详情停留约 3 秒 → 查看待核对和复制诊断，无需再次消费，详见 [手机步骤](docs/PHASE2_TESTING.md)。
 
-构建、Lint、JVM 73 项及 Python 10 项通过。准确固定签名 APK 已通过 API 35 普通 42 项及公开旧 0.2.3 → 本版真实覆盖更新的数据和采集开关保留检查；源码模拟器 API 26 实际执行 41 项，API 35 / 36 各 42 项全部通过；公开下载与被测签名包逐字节一致，证据见 [本版说明](docs/RELEASE_0.2.4.md)。虚构网页测试没有打开微信或拼多多；真实付款、后台扣费及长期运行仍待验证。未新增联网、截图、全部窗口访问或原始账单日志；本版没有实现 OCR。
+构建、Lint、JVM 84 项及 Python 10 项通过。源码模拟器 API 26 实际执行 43 项，API 35 / 36 各 44 项通过；最终固定签名 APK 通过 API 35 普通 44 项及公开旧 0.2.4 → 本版覆盖更新的账单、去重和开关保留检查。公开下载 APK 与云端被测签名包逐字节一致；完整校验见 [本版说明](docs/RELEASE_0.2.5.md)。测试使用虚构数据，没有打开微信或拼多多；本版真机结果、真实付款、后台扣费及长期运行待验证。没有新增联网、截图、全部窗口访问或原始账单日志；尚未实现 OCR。
 
 本版与第一阶段 `.preview` 应用并列安装。当前缺少完整分类规则、周期统计、退款关联、账单导入导出及加密备份，请保留其他账目来源，不作为唯一账本。
 
