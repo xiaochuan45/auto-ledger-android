@@ -24,6 +24,8 @@ import io.github.xiaochuan45.autoledger.core.PaymentParser
 import io.github.xiaochuan45.autoledger.core.RecordStatus
 import io.github.xiaochuan45.autoledger.core.TimeSource
 import org.junit.Assert.*
+import org.junit.BeforeClass
+import org.junit.AfterClass
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.ArrayDeque
@@ -40,6 +42,58 @@ import kotlinx.coroutines.flow.first
 @RunWith(AndroidJUnit4::class)
 class WechatWebReceiptScopeTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
+
+    companion object {
+        private lateinit var fixtureAutomation: UiAutomation
+        private lateinit var originalInfo: AccessibilityServiceInfo
+        private var previousServices = "null"
+        private var previousEnabled = "null"
+
+        @BeforeClass @JvmStatic fun connectProviderSessionOnceForTheClass() {
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            val automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+            fixtureAutomation = automation
+            originalInfo = automation.serviceInfo
+            previousServices = shell(automation, "settings get secure enabled_accessibility_services")
+            previousEnabled = shell(automation, "settings get secure accessibility_enabled")
+            // Retain the exact production flag and one stable non-suppressing connection across fixtures.
+            automation.serviceInfo = automation.serviceInfo.apply { flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS }
+            val component = instrumentation.targetContext.packageName + "/" + LedgerAccessibilityService::class.java.name
+            val services = previousServices.takeUnless { it == "null" || it.isBlank() }?.split(':').orEmpty()
+            shell(automation, "settings put secure enabled_accessibility_services " + settingToken((services + component).distinct().joinToString(":")))
+            shell(automation, "settings put secure accessibility_enabled 1")
+            val manager = instrumentation.targetContext.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+            fun ready() = CaptureServiceConnections.accessibilityConnected &&
+                manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK).any {
+                    it.resolveInfo.serviceInfo.name == LedgerAccessibilityService::class.java.name
+                }
+            val deadline = SystemClock.uptimeMillis() + 15_000
+            while (!ready() && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(100)
+            assertTrue("The actual non-tool service must be connected before local provider fixtures", ready())
+        }
+
+        @AfterClass @JvmStatic fun restoreProviderSessionAfterAllFixtures() {
+            if (!::fixtureAutomation.isInitialized) return
+            val automation = fixtureAutomation
+            restore(automation, "enabled_accessibility_services", previousServices)
+            restore(automation, "accessibility_enabled", previousEnabled)
+            if (::originalInfo.isInitialized) automation.serviceInfo = originalInfo
+            InstrumentationRegistry.getInstrumentation().uiAutomation
+        }
+
+    // UiAutomation uses Runtime.exec argv tokenization, not shell parsing: quotes become literal data.
+    private fun settingToken(value: String): String {
+        require(Regex("[A-Za-z0-9_.$/:+-]+").matches(value))
+        return value
+    }
+    private fun shell(automation: UiAutomation, command: String) =
+        ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command)).bufferedReader().use { it.readText().trim() }
+    private fun restore(automation: UiAutomation, name: String, previous: String) {
+        shell(automation, if (previous == "null" || previous.isBlank()) "settings delete secure $name"
+            else "settings put secure $name " + settingToken(previous))
+    }
+
+    }
 
     @Test fun selectedNativeMerchantDetailReadsInlineBeforeLauncherAndFlowsThroughScopeParserAndDedup() {
         val profile = listOf("虚构商户", "喜欢", "虚构店铺介绍", "服务", "会员", "交易详情",
@@ -241,31 +295,8 @@ class WechatWebReceiptScopeTest {
     private fun withPage(labels: List<String>, nativeLabels: Boolean, html: String? = null,
         nativeRows: List<String> = emptyList(), nativeOnly: Boolean = false,
         invisibleWrapper: Boolean = false, hiddenRowIndices: Set<Int> = emptySet(), check: (AccessibilityNodeInfo) -> Unit) {
-        val automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
-        // Connect before constructing WebView so its provider observes accessibility enabled.
-        val originalInfo = automation.serviceInfo
-        // Match exactly the production service's single node-visibility flag; no all-window access.
-        automation.serviceInfo = automation.serviceInfo.apply { flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS }
+        val automation = fixtureAutomation
         val loaded = CountDownLatch(1)
-        val previousServices = shell(automation, "settings get secure enabled_accessibility_services")
-        val previousEnabled = shell(automation, "settings get secure accessibility_enabled")
-        try {
-        // Chrome can report no accessibility services when only the hidden UiAutomation service exists.
-        // Enable the real, non-tool app service in this emulator; its package filter excludes our HTML.
-        val component = instrumentation.targetContext.packageName + "/" + LedgerAccessibilityService::class.java.name
-        val services = previousServices.takeUnless { it == "null" || it.isBlank() }?.split(':').orEmpty()
-        shell(automation, "settings put secure enabled_accessibility_services " + settingToken((services + component).distinct().joinToString(":")))
-        shell(automation, "settings put secure accessibility_enabled 1")
-        val manager = instrumentation.targetContext.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
-        val enabledDeadline = SystemClock.uptimeMillis() + 10_000
-        while (SystemClock.uptimeMillis() < enabledDeadline &&
-            !manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK).any {
-                it.resolveInfo.serviceInfo.name == LedgerAccessibilityService::class.java.name
-            }) SystemClock.sleep(100)
-        assertTrue("The emulator must expose our actual service before WebView initialization",
-            manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK).any {
-                it.resolveInfo.serviceInfo.name == LedgerAccessibilityService::class.java.name
-            })
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             var page: WebView? = null
             try {
@@ -334,13 +365,6 @@ class WechatWebReceiptScopeTest {
                 }
             }
         }
-        } finally {
-            restore(automation, "enabled_accessibility_services", previousServices)
-            restore(automation, "accessibility_enabled", previousEnabled)
-            automation.serviceInfo = originalInfo
-            // Restore the ordinary test connection, including its normal service suppression.
-            instrumentation.uiAutomation
-        }
     }
 
     @Suppress("DEPRECATION")
@@ -361,18 +385,6 @@ class WechatWebReceiptScopeTest {
             }
             return null
         } finally { while (queue.isNotEmpty()) release(queue.removeFirst()) }
-    }
-
-    // UiAutomation uses Runtime.exec argv tokenization, not shell parsing: quotes become literal data.
-    private fun settingToken(value: String): String {
-        require(Regex("[A-Za-z0-9_.$/:+-]+").matches(value))
-        return value
-    }
-    private fun shell(automation: UiAutomation, command: String) =
-        ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command)).bufferedReader().use { it.readText().trim() }
-    private fun restore(automation: UiAutomation, name: String, previous: String) {
-        shell(automation, if (previous == "null" || previous.isBlank()) "settings delete secure $name"
-            else "settings put secure $name " + settingToken(previous))
     }
 
     /** Test-only traversal of our own fictional HTML; find-by-text is not implemented by every provider. */
