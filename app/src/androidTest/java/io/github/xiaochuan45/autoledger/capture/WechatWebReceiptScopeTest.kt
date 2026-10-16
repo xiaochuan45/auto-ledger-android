@@ -64,7 +64,8 @@ class WechatWebReceiptScopeTest {
             val value = PaymentParser.parse(CaptureInput(CaptureSource.ACCESSIBILITY, PaymentChannel.WECHAT.packageName,
                 requireNotNull(pieces), 1_800_000_000_000L, "fictional-local-dom", screenClass = WechatWebReceipt.WINDOW))
             assertNotNull(value)
-            assertEquals(4270L, value!!.amountMinor)
+            // Only this inert fixture's literal fictional fields can appear in an assertion report.
+            assertEquals("Fictional HTML fragments: $pieces", 4270L, value!!.amountMinor)
             assertEquals("FICTIONAL-DOM-MERGED-A", value.transactionId)
             assertEquals(TimeSource.PAYMENT, value.timeSource)
             assertEquals(RecordStatus.REVIEW, value.status)
@@ -163,18 +164,20 @@ class WechatWebReceiptScopeTest {
             }
             assertTrue("Local HTML must finish loading", loaded.await(15, TimeUnit.SECONDS))
             val deadline = SystemClock.uptimeMillis() + 15_000
+            var observedRoot = "no active root"
             while (SystemClock.uptimeMillis() < deadline) {
                 // A new Activity/WebView must not reuse the preceding fixture's cached virtual tree.
                 if (Build.VERSION.SDK_INT >= 33) automation.clearCache()
                 val root = automation.rootInActiveWindow
                 if (root != null) {
                     try {
+                        observedRoot = "ownPackage=${root.packageName?.toString() == instrumentation.targetContext.packageName}; children=${root.childCount}"
                         if (hasFictionalSentinel(root)) { check(root); return }
                     } finally { release(root) }
                 }
                 SystemClock.sleep(100)
             }
-            fail("Local WebView accessibility tree did not become available")
+            fail("Local WebView accessibility tree did not become available: $observedRoot")
             } finally {
                 // Activity destruction alone does not destroy a WebView or release its provider.
                 scenario.onActivity {
