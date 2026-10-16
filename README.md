@@ -4,9 +4,11 @@
 
 ## 当前进度
 
-目前处于第一阶段：仓库写入授权已恢复，规划和最小工程已推送。当前云端开发环境的编译、Lint 与实际 APK 审计已通过；[首轮 GitHub Actions](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38843736161) 正在运行，模拟器测试、APK 发布及手机安装启动仍待验证。自动付款识别、账单存储、分类、退款和统计尚未交付。
+第一阶段的云端构建、Lint、实际 APK 审计，以及 Android 15 模拟器启动和三个页面导航测试已通过（2 项测试，0 失败）。[安装预览版已发布](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/preview-38843855896-1)，当前云端已通过公开 Release 链接下载并核对 SHA-256；用户手机网络下载及真机安装启动仍待验证。
 
-第一份 APK 是**安装验证版**，不读取通知或页面，不保存真实账单，不代表自动记账功能可用。是否构建成功、是否有可下载产物及真机结果，以 [第一阶段记录](docs/PHASE1_STATUS.md) 为准。
+**[下载 APK：本地账本·预览 0.1.0-preview](https://github.com/xiaochuan45/auto-ledger-android/releases/download/preview-38843855896-1/auto-ledger-preview.apk)**，约 9.3 MB，最低 Android 8.0。安装方法、签名限制和校验值见 [云端编译与手机安装](docs/BUILD_AND_INSTALL.md)。
+
+这份 APK 是**安装验证版**，不读取通知或页面，不保存真实账单。自动付款识别、账单存储、分类、退款和统计本轮未实现，真实支付场景未验证。具体证据和真机结果见 [第一阶段记录](docs/PHASE1_STATUS.md)。
 
 ## 项目文档
 

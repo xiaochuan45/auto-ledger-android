@@ -4,15 +4,15 @@
 
 ## 当前访问状态（2026-10-16）
 
-仓库写入授权已恢复：用户安装官方 [ChatGPT Codex Connector](https://github.com/apps/chatgpt-codex-connector) 并选择 All repositories，API 确认内容及工作流写入权限；实际 `git push` 已成功将 `main` 推进到 [`f31ff887521ee718d52b1f463874b1414c8c665a`](https://github.com/xiaochuan45/auto-ledger-android/commit/f31ff887521ee718d52b1f463874b1414c8c665a)。此前实际写入返回 403 的阻断已解决，排障历史保留在 [第一阶段记录](PHASE1_STATUS.md)。
+仓库写入授权已恢复：用户安装官方 [ChatGPT Codex Connector](https://github.com/apps/chatgpt-codex-connector) 并选择 All repositories，API 确认内容及工作流写入权限，实际 `git push` 成功。本次发布对应源码为 [`56083c7aafb77e43fc3fe3841cbf7e22e2dc9022`](https://github.com/xiaochuan45/auto-ledger-android/commit/56083c7aafb77e43fc3fe3841cbf7e22e2dc9022)。此前写入返回 403 的阻断已解决，当前不需要重新安装或配置 GitHub 应用；排障历史保留在 [第一阶段记录](PHASE1_STATUS.md)。
 
-当前云端开发环境的编译、Lint、实际 APK 权限和签名审计已通过。[首轮 GitHub Actions](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38843736161) 已触发且正在运行；模拟器结果尚未确认，APK 尚未发布，下载及手机安装启动仍待验证。
+当前云端开发环境和 [GitHub Actions run 38843855896](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38843855896) 的编译、Lint、实际 APK 权限和签名审计均通过。CI 在 Android 15 / API 35 模拟器执行启动和三个页面导航测试，2 项通过、0 跳过、0 失败，测试后 APK 一致性检查及发布 job 均成功。当前云端已通过公开 Release URL 下载并校验 APK；用户手机网络下载和真机安装启动仍待验证。
 
 ## 云端构建方式
 
-GitHub Actions 的 [Android preview 工作流](../.github/workflows/android.yml) 在推送 `main`、创建 PR 和手动触发时运行。它执行：
+GitHub Actions 的 [Android preview 工作流](../.github/workflows/android.yml) 在推送 `main`、创建 PR 和手动触发时运行；仅 Markdown 或 `docs/` 的修改不会触发自动构建。它执行：
 
-1. 准备 Temurin JDK 17、Android SDK 35、Build Tools 35.0.0 与仓库 Gradle Wrapper。
+1. 在 `ubuntu-24.04` 准备 Temurin JDK 17、固定版本 `11076708` 的 Android command-line tools、Platform Tools、Android SDK 35、Build Tools 35.0.0 与仓库 Gradle Wrapper。
 2. 编译 Debug APK，并执行 Android lint。
 3. 对实际 APK 检查 manifest、网络权限、导出组件、备份规则和签名，生成 SHA-256。
 4. 在 Android 15 / API 35 的 x86_64 模拟器上安装并执行启动和导航测试，再核对交付 APK 与测试构建一致。
@@ -20,15 +20,24 @@ GitHub Actions 的 [Android preview 工作流](../.github/workflows/android.yml)
 
 本轮不依赖个人电脑。仓库依赖下载和编译发生在 GitHub 托管 runner；安装到手机后的应用不联网。第三方 Actions 均固定到提交 SHA。PR 只有读取仓库权限；仅发布 job 有 `contents: write`。
 
-当前工作流正在执行，不能把源码已推送或云端开发环境编译通过等同于 Actions 全部检查、模拟器测试或发布通过。实际状态应查看本次 Actions run 和发布记录。
+本次工作流全部检查和发布已通过；模拟器证据仅适用于相应环境与启动/导航测试，不能代替一加手机安装、真实付款识别或后台运行验证。初始 SDK 准备失败及修复经过见 [第一阶段记录](PHASE1_STATUS.md)。
 
 ## APK 下载
 
-优先打开仓库的 [Releases 页面](https://github.com/xiaochuan45/auto-ledger-android/releases)，选择最新的“本地账本 · 安装预览”预发布版本，在 Assets 中下载 **`auto-ledger-preview.apk`**。同一版本提供 `auto-ledger-preview.apk.sha256` 和 `permissions-audit.md`。不要下载 GitHub 自动生成的 Source code 压缩包来安装。
+**[直接下载本轮 APK](https://github.com/xiaochuan45/auto-ledger-android/releases/download/preview-38843855896-1/auto-ledger-preview.apk)**，或打开 [preview-38843855896-1 发布页](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/preview-38843855896-1)，在 Assets 中下载 `auto-ledger-preview.apk`。附件已发布；当前云端通过公开链接无额外认证下载 APK、SHA-256 文件及审计报告，并核对校验值通过。手机网络是否能访问及真机安装结果仍需用户验证。
+
+| 项目 | 本轮附件 |
+|---|---|
+| 文件大小 | 9,286,218 bytes，约 8.86 MiB / 9.3 MB |
+| SHA-256 | `b9e84e3d036e5e59014aa2be7e76b3d186b19b33cac50f5c2c445ad80d1c3776` |
+| 校验文件 | [auto-ledger-preview.apk.sha256](https://github.com/xiaochuan45/auto-ledger-android/releases/download/preview-38843855896-1/auto-ledger-preview.apk.sha256) |
+| 审计报告 | [permissions-audit.md](https://github.com/xiaochuan45/auto-ledger-android/releases/download/preview-38843855896-1/permissions-audit.md) |
+
+不要下载 GitHub 自动生成的 Source code 压缩包来安装。历史云端本地构建使用另一调试签名，不能混用其校验值；本轮下载以表中发布 APK 校验值为准。
 
 每次发布使用独立标签 `preview-<run id>-<run attempt>`，不会覆盖旧 APK。Release 页面包含源码提交及云端验证记录。预发布版本可能不会显示在 GitHub 的 `/releases/latest`，请使用完整 Releases 页面。
 
-若 Release 尚未出现，先查看 [Actions](https://github.com/xiaochuan45/auto-ledger-android/actions) 中对应运行。验证成功的运行会提供 `preview-apk-...` artifact（需登录 GitHub，保存 30 天）；下载 ZIP 后解压得到 APK。没有 artifact 或 Release 表示尚无可交付文件，不能把源码当作安装包。
+本轮 Release 已发布，优先使用上述直接 APK 链接。后续版本若 Release 尚未出现，可查看 [Actions](https://github.com/xiaochuan45/auto-ledger-android/actions) 中对应运行；验证成功的运行还提供 `preview-apk-...` artifact（需登录 GitHub，保存 30 天），下载 ZIP 后解压得到 APK。
 
 ## 一加手机安装与检查
 
