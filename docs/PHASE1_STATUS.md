@@ -49,5 +49,5 @@
 1. 手机浏览器登录 `xiaochuan45`，打开 <https://github.com/settings/installations>。
 2. 找到本次 ChatGPT/Codex 连接对应的 GitHub App，进入 Configure。
 3. Repository access 如为 Only select repositories，将 `auto-ledger-android` 加入并 Save；如有权限更新提示，按授权页确认所需的内容和工作流写入权限。
-4. 如果找不到对应安装，在发起任务的 ChatGPT/Codex 设置中找到 GitHub 应用或连接器，重新连接并选择本仓库。不同手机版菜单名称可能不同。
+4. 当前已由 API 和用户截图确认没有已安装的 GitHub App。已核实官方应用为 [ChatGPT Codex Connector](https://github.com/apps/chatgpt-codex-connector)，发布者 `openai`，声明 contents/workflows 写权限；可在官方应用页面点 Install，选择账号及本仓库完成安装。如仍不可用，在发起任务的 ChatGPT/Codex 设置中找到 GitHub 应用或连接器重新连接。
 5. 如应用权限页仅提供 Contents read-only，选择仓库本身不会升级为写权限；需要使用具备写入权限的 Codex GitHub 连接。授权是否恢复以重新执行真实写入的结果为准。
