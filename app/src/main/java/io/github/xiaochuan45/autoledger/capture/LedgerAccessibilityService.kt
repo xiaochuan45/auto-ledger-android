@@ -17,7 +17,7 @@ class LedgerAccessibilityService : AccessibilityService() {
     private lateinit var dispatcher: CaptureDispatcher
     private var settingsObserver: AutoCloseable? = null
     private val handler = Handler(Looper.getMainLooper())
-    private val windows = PaymentWindowGate()
+    private val windows = PaymentWindowCapture(::readVerifiedWindow, ::scheduleRead, ::cancelScheduledRead)
     private val session get() = windows.session
     private var scheduledRead: Runnable? = null
     private var lastReadElapsed = 0L
@@ -59,26 +59,21 @@ class LedgerAccessibilityService : AccessibilityService() {
             CaptureDiagnostics.skipped(CaptureSkip.COMPATIBILITY_ONLY, CaptureSource.ACCESSIBILITY)
             return
         }
-        val previousToken = session?.token
         val reason = windows.event(channel, className, event.windowId, stateChanged, nowElapsed,
             explicitReady = CaptureDiagnostics.oneShotSnapshot().state == OneShotState.WAITING)
         if (reason != null) {
             if (session == null) clearWindow()
             CaptureDiagnostics.skipped(reason, CaptureSource.ACCESSIBILITY)
-            return
         }
-        if (previousToken != session?.token) {
-            scheduledRead?.let(handler::removeCallbacks)
-            scheduledRead = null
-            lastReadElapsed = 0
-        }
+    }
 
-        val current = session ?: return
+    private fun scheduleRead(current: PaymentWindowSession) {
+        val nowElapsed = SystemClock.elapsedRealtime()
         val intervalDelay = (MIN_READ_INTERVAL_MS - (nowElapsed - lastReadElapsed)).coerceAtLeast(0)
         // An asynchronous receipt must finish painting before either automatic or explicit one-time reading.
         // A stream of content events must not postpone this same request forever. No polling is used.
         if (scheduledRead != null) return
-        val webDelay = if (current.explicitOnly) 1_500L else if (current.receipt)
+        val webDelay = if (current.receipt)
             maxOf(500L, 750L - (nowElapsed - current.verifiedAtElapsed)) else 0L
         val remainingDelay = maxOf(intervalDelay, webDelay)
         scheduledRead?.let(handler::removeCallbacks)
@@ -96,10 +91,12 @@ class LedgerAccessibilityService : AccessibilityService() {
             SystemClock.elapsedRealtime() - expected.verifiedAtElapsed !in 0..PaymentWindowGate.VALIDITY_MS ||
             (expected.explicitOnly && CaptureDiagnostics.oneShotSnapshot().state != OneShotState.WAITING)
         ) { clearWindow(); return }
+        if (expected.explicitOnly && !CaptureDiagnostics.beginOneShotWindowCheck(expected.channel, expected.screenClass)) return
         lastReadElapsed = SystemClock.elapsedRealtime()
         try {
             // Never inspect event.source, event.text, other windows, screenshots or event parcel data.
             val root = rootInActiveWindow ?: run {
+                if (expected.explicitOnly) CaptureDiagnostics.oneShotStage(OneShotStage.ROOT_MISSING)
                 CaptureDiagnostics.skipped(CaptureSkip.ROOT_UNAVAILABLE, CaptureSource.ACCESSIBILITY)
                 return
             }
@@ -110,20 +107,22 @@ class LedgerAccessibilityService : AccessibilityService() {
                 throw IllegalStateException()
             }
             if (!validRoot) {
+                if (expected.explicitOnly) CaptureDiagnostics.oneShotStage(OneShotStage.WINDOW_CHANGED)
                 releaseNode(root)
                 clearWindow()
                 CaptureDiagnostics.skipped(CaptureSkip.WINDOW_CHANGED, CaptureSource.ACCESSIBILITY)
                 return
             }
             val webReceipt = expected.receipt
-            val requested = webReceipt && CaptureDiagnostics.takeOneShotWechatReceipt(expected.channel, expected.screenClass)
-            if (expected.explicitOnly && !requested) { releaseNode(root); clearWindow(); return }
+            val requested = webReceipt && !expected.explicitOnly &&
+                CaptureDiagnostics.takeOneShotWechatReceipt(expected.channel, expected.screenClass)
             val scopedRoot = if (webReceipt) {
                 val matched = try { WechatWebReceiptScope.findReceiptRoot(root, expected.channel.packageName, expected.windowId,
                     selectedMini = expected.explicitOnly) }
                     catch (failure: RuntimeException) { releaseNode(root); throw failure }
                 if (matched == null && (!requested || expected.explicitOnly)) {
                     releaseNode(root)
+                    if (expected.explicitOnly) CaptureDiagnostics.oneShotStage(OneShotStage.INCOMPLETE)
                     CaptureDiagnostics.skipped(CaptureSkip.WEB_RECEIPT_SCOPE, CaptureSource.ACCESSIBILITY)
                     return
                 }
@@ -133,13 +132,16 @@ class LedgerAccessibilityService : AccessibilityService() {
                     matched
                 } else root // Explicit one-time selection: only this validated app/window, still review-only.
             } else root
+            val selected = if (expected.explicitOnly)
+                CaptureDiagnostics.takeOneShotWechatReceipt(expected.channel, expected.screenClass) else requested
+            if (expected.explicitOnly && !selected) { releaseNode(scopedRoot); clearWindow(); return }
             val texts = PaymentTextReader.read(scopedRoot, expected.channel.packageName, webReceipt) ?: return
             if (texts.isEmpty()) {
                 CaptureDiagnostics.skipped(CaptureSkip.EMPTY_TEXT, CaptureSource.ACCESSIBILITY)
                 return
             }
             dispatcher.submit(CaptureInput(
-                source = if (requested) CaptureSource.USER_WEB_RECEIPT else CaptureSource.ACCESSIBILITY,
+                source = if (selected) CaptureSource.USER_WEB_RECEIPT else CaptureSource.ACCESSIBILITY,
                 packageName = expected.channel.packageName,
                 texts = texts,
                 observedAt = System.currentTimeMillis(),
@@ -150,16 +152,17 @@ class LedgerAccessibilityService : AccessibilityService() {
             CaptureDiagnostics.failed(CaptureFailure.ACCESSIBILITY_READ)
             clearWindow()
         } finally {
-            if (expected.explicitOnly) clearWindow()
+            if (expected.explicitOnly && CaptureDiagnostics.oneShotSnapshot().state != OneShotState.WAITING) clearWindow()
         }
     }
 
-    private fun clearWindow() {
+    private fun cancelScheduledRead() {
         scheduledRead?.let(handler::removeCallbacks)
         scheduledRead = null
-        windows.clear()
         lastReadElapsed = 0
     }
+
+    private fun clearWindow() { windows.clear() }
 
     override fun onInterrupt() {
         CaptureDiagnostics.cancelOneShotWechatReceipt()

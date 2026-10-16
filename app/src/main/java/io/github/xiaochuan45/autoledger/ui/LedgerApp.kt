@@ -399,8 +399,9 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
             Text("不同品牌手机可在系统应用管理中检查电池使用、允许后台活动等选项，名称随品牌和系统版本变化。若服务断开，检查开关或在系统设置中重新启用。", style = MaterialTheme.typography.bodySmall)
         }
         SettingsCard("已有微信账单读取一次") {
-            Text("点击后30秒内，退出微信付款详情再重新打开它。支持微信网页和小程序交易详情；小程序需先匹配必要交易栏目。只读取一次，不截图，结果仅待核对。页面没有提供文字时仍无法识别。", style = MaterialTheme.typography.bodySmall)
+            Text("点击后30秒内，退出微信付款详情再重新打开它。支持微信网页和小程序交易详情；小程序随入口事件检查栏目，最多8次，栏目齐全才读取正文一次。不轮询，不截图，结果仅待核对。页面没有提供文字时仍无法识别。", style = MaterialTheme.typography.bodySmall)
             Text(oneShot.state.label, modifier = Modifier.testTag("one_shot_status"))
+            Text("小程序窗口检查 ${oneShot.windowChecks}/8；${oneShot.stage.label}", style = MaterialTheme.typography.bodySmall)
             Text("本次请求观察到的入口：${oneShot.windowTypes.joinToString("、").ifEmpty { "无" }}", style = MaterialTheme.typography.bodySmall)
             OutlinedButton(onClick = { CaptureDiagnostics.requestOneShotWechatReceipt(); refreshCount++ },
                 enabled = settings.enabled && settings.wechatEnabled && permissions.accessibilityConnected && !compatibility.active,

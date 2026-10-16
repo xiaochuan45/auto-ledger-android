@@ -41,25 +41,32 @@ import kotlinx.coroutines.flow.first
 class WechatWebReceiptScopeTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
 
-    @Test fun selectedNativeMerchantDetailFlowsThroughWindowGateScopeParserAndPersistentDedup() {
+    @Test fun selectedNativeMerchantDetailReadsInlineBeforeLauncherAndFlowsThroughScopeParserAndDedup() {
         val profile = listOf("虚构商户", "喜欢", "虚构店铺介绍", "服务", "会员", "交易详情",
             "虚构栏目一", "虚构栏目二", "虚构栏目三", "-42.70", "虚构商户").joinToString("\n")
         val rows = listOf(profile, "当前状态支付成功", "支付时间2025年3月12日 10:20:30",
             "支付方式零钱", "交易单号FICTIONAL-NATIVE-MINI-A")
         withPage(emptyList(), false, nativeRows = rows, nativeOnly = true) { root ->
             val request = OneShotWechatReceipt { 100L }.apply { arm() }
-            val gate = PaymentWindowGate { "fictional-selected-mini" }
-            assertNull(gate.event(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW, root.windowId, true, 100, true))
-            assertNull(gate.event(PaymentChannel.WECHAT, "android.widget.FrameLayout", root.windowId, true, 110, true))
-            val session = requireNotNull(gate.session)
-            assertTrue(request.consume(session.channel, session.screenClass))
-            assertFalse(request.consume(session.channel, session.screenClass))
-            val selected = WechatWebReceiptScope.findReceiptRoot(root, instrumentation.targetContext.packageName,
-                root.windowId, selectedMini = session.explicitOnly)
-            assertNotNull("Four native columns must be required before the body reader runs", selected)
-            val pieces = requireNotNull(PaymentTextReader.read(requireNotNull(selected), instrumentation.targetContext.packageName, true))
+            var pieces: List<String>? = null
+            var capturedSession: PaymentWindowSession? = null
+            val capture = PaymentWindowCapture({ session ->
+                assertTrue(request.beginWindowCheck(session.channel, session.screenClass))
+                val selected = WechatWebReceiptScope.findReceiptRoot(root, instrumentation.targetContext.packageName,
+                    root.windowId, selectedMini = session.explicitOnly)
+                assertNotNull("Four native columns must be required before the body reader runs", selected)
+                assertTrue(request.consume(session.channel, session.screenClass))
+                assertFalse(request.consume(session.channel, session.screenClass))
+                pieces = PaymentTextReader.read(requireNotNull(selected), instrumentation.targetContext.packageName, true)
+                capturedSession = session
+            }, { fail("Selected mini must not be deferred") }, {})
+            assertNull(capture.event(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW, root.windowId, true, 100, true))
+            assertNotNull("Production callback must read before the following Launcher event", pieces)
+            assertEquals(CaptureSkip.WINDOW_UNSUPPORTED, capture.event(PaymentChannel.WECHAT, "com.tencent.mm.ui.LauncherUI",
+                root.windowId, true, 101, false))
+            val session = requireNotNull(capturedSession)
             val parsed = requireNotNull(PaymentParser.parse(CaptureInput(CaptureSource.USER_WEB_RECEIPT,
-                PaymentChannel.WECHAT.packageName, pieces, 1_800_000_000_000L, session.token, screenClass = session.screenClass)))
+                PaymentChannel.WECHAT.packageName, requireNotNull(pieces), 1_800_000_000_000L, session.token, screenClass = session.screenClass)))
             assertEquals("Fictional native fragments: $pieces", 4270L, parsed.amountMinor)
             assertEquals(TimeSource.PAYMENT, parsed.timeSource)
             assertEquals(RecordStatus.REVIEW, parsed.status)

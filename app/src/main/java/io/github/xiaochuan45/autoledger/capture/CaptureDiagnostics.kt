@@ -57,6 +57,8 @@ object CaptureDiagnostics {
     fun cancelOneShotWechatReceipt() = oneShot.cancel()
     fun oneShotSnapshot() = oneShot.snapshot()
     internal fun takeOneShotWechatReceipt(channel: PaymentChannel, screenClass: String) = oneShot.consume(channel, screenClass)
+    internal fun beginOneShotWindowCheck(channel: PaymentChannel, screenClass: String) = oneShot.beginWindowCheck(channel, screenClass)
+    internal fun oneShotStage(stage: OneShotStage) = oneShot.noteStage(stage)
     internal fun noteOneShotWindow(channel: PaymentChannel, screenClass: String) = oneShot.window(channel, screenClass)
     fun stopCompatibilityCheck() = compatibility.stop()
     fun clearCompatibilityCheck() { oneShot.cancel(); compatibility.clear() }
@@ -69,6 +71,7 @@ object CaptureDiagnostics {
             appendLine("本地账本 $appVersion / Android API $sdk")
             appendLine("兼容性检查：${if (probe.active) "进行中，暂停自动记录" else "未运行"}")
             appendLine("一次微信读取：${oneShot.snapshot().state.label}；本进程尝试 ${oneShot.snapshot().attempts} 次")
+            appendLine("本次小程序窗口检查：${oneShot.snapshot().windowChecks} 次（最多8次，仅事件触发）；阶段：${oneShot.snapshot().stage.label}")
             appendLine("本次一次读取期间入口（仅程序标识）：${oneShot.snapshot().windowTypes.joinToString("、").ifEmpty { "无" }}")
             appendLine("已选渠道窗口事件：${current.windowEvents}；支持窗口：${current.supportedWindowEvents}")
             appendLine("微信详情结构命中：${current.webReceiptMatches}（仍需核对来源）")

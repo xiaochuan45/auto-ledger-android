@@ -6,6 +6,39 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class OneShotWechatReceiptTest {
+    @Test fun windowChecksAreThrottledBoundedAndBodyIsStillConsumedOnlyOnce() {
+        var now = 100L
+        val request = OneShotWechatReceipt { now }.apply { arm() }
+        assertFalse(request.beginWindowCheck(PaymentChannel.ALIPAY, WechatWebReceipt.MINI_WINDOW))
+        assertFalse(request.beginWindowCheck(PaymentChannel.WECHAT, "com.tencent.mm.ui.LauncherUI"))
+        assertTrue(request.beginWindowCheck(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW))
+        repeat(100) { assertFalse(request.beginWindowCheck(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW)) }
+        repeat(7) { now += 500; assertTrue(request.beginWindowCheck(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW)) }
+        now += 500
+        assertFalse(request.beginWindowCheck(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW))
+        assertEquals(8, request.snapshot().windowChecks)
+        assertEquals(OneShotStage.BUDGET, request.snapshot().stage)
+        assertEquals(0, request.snapshot().attempts)
+        request.arm()
+        assertEquals(0, request.snapshot().windowChecks)
+        assertTrue(request.beginWindowCheck(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW))
+        assertTrue(request.consume(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW))
+        assertFalse(request.beginWindowCheck(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW))
+        assertFalse(request.consume(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW))
+    }
+
+    @Test fun expiredCancelledOrRestartedRequestsCannotCheckAnyRoot() {
+        var now = 100L
+        val request = OneShotWechatReceipt { now }.apply { arm() }
+        now += 30_000
+        assertFalse(request.beginWindowCheck(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW))
+        request.arm(); request.cancel()
+        assertFalse(request.beginWindowCheck(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW))
+        assertFalse(OneShotWechatReceipt { now }.beginWindowCheck(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW))
+        request.arm(); now--
+        assertFalse(request.beginWindowCheck(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW))
+    }
+
     @Test fun selectedMiniConsumesExactlyOnceWhileLauncherNeverConsumes() {
         val request = OneShotWechatReceipt { 100L }
         request.arm()
