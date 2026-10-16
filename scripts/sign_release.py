@@ -31,7 +31,9 @@ def main():
         subprocess.run([str(tools / "zipalign"), "-P", "16", "-f", "4", str(args.apk), str(aligned)], check=True)
         subprocess.run([
             str(tools / "apksigner"), "sign", "--ks", str(key), "--ks-key-alias", "auto-ledger",
-            "--ks-pass", "file:" + str(password), "--key-pass", "file:" + str(password),
+            # PKCS12 uses the store password for this key. apksigner consumes a
+            # password file sequentially, so passing it twice would read EOF.
+            "--ks-pass", "file:" + str(password),
             "--v4-signing-enabled", "false", "--out", str(args.out), str(aligned),
         ], check=True, capture_output=True)
     result = subprocess.run([
