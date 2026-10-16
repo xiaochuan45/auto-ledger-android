@@ -22,6 +22,11 @@ on:
         required: false
         default: ''
         type: string
+      delivery_ref:
+        description: 'Optional exact 40-character commit SHA containing only the four staged delivery files'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -114,7 +119,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     # GitHub draft releases require a repository identity with push access.
-    # This job only downloads and verifies; publication is performed separately.
+    # This job may stage signed files in a draft and verifies them; publication is separate.
     permissions:
       contents: write
     timeout-minutes: 45
@@ -138,24 +143,75 @@ jobs:
       - name: Install audit tools
         run: sdkmanager 'build-tools;35.0.0'
 
-      - name: Download the draft's signed APKs (without rebuilding)
+      - name: Validate dispatch inputs against the main checkout's public certificate
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          CERTIFICATE_SHA256: ${{ inputs.certificate_sha256 }}
+          DELIVERY_REF: ${{ inputs.delivery_ref }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$ ]] || { echo 'Invalid release tag'; exit 1; }
+          [[ "$CERTIFICATE_SHA256" =~ ^[0-9a-fA-F:]{64,95}$ ]] || { echo 'A public certificate fingerprint is required'; exit 1; }
+          normalized_certificate="${CERTIFICATE_SHA256//:/}"
+          normalized_certificate="${normalized_certificate,,}"
+          public_pin="$(tr -d '[:space:]' < config/signing-certificate.sha256)"
+          [[ "$public_pin" =~ ^[0-9a-f]{64}$ && "$normalized_certificate" == "$public_pin" ]] || { echo 'Certificate does not match the main checkout public pin'; exit 1; }
+          [[ -z "$DELIVERY_REF" || "$DELIVERY_REF" =~ ^[0-9a-fA-F]{40}$ ]] || { echo 'delivery_ref must be an exact 40-character commit SHA'; exit 1; }
+
+      - name: Check out signed delivery files separately from the main scripts
+        if: inputs.delivery_ref != ''
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.delivery_ref }}
+          path: staging
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+
+      - name: Audit and upload only the four staged files to the existing draft
+        if: inputs.delivery_ref != ''
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           CERTIFICATE_SHA256: ${{ inputs.certificate_sha256 }}
         run: |
-          [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$ ]] || { echo 'Invalid release tag'; exit 1; }
-          [[ "$CERTIFICATE_SHA256" =~ ^[0-9a-fA-F:]{64,95}$ ]] || { echo 'A public certificate fingerprint is required'; exit 1; }
+          [[ "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" == true ]] || { echo 'Staging upload requires an existing draft release'; exit 1; }
+          mkdir staged-delivery
+          for name in auto-ledger-prototype.apk auto-ledger-prototype.apk.sha256 verification-instrumentation.apk verification-upgrade.apk; do
+            [[ -f "staging/$name" && ! -L "staging/$name" ]] || { echo "Invalid staging file: $name"; exit 1; }
+            cp -- "staging/$name" "staged-delivery/$name"
+          done
+          python3 scripts/verify_delivery_signatures.py --directory staged-delivery --expected-cert-sha256 "$CERTIFICATE_SHA256"
+          python3 scripts/verify_apk.py --apk staged-delivery/auto-ledger-prototype.apk --output-dir staged-delivery/audit --build-type release --expected-cert-sha256 "$CERTIFICATE_SHA256"
+          python3 scripts/verify_apk.py --apk staged-delivery/verification-upgrade.apk --output-dir staged-delivery/upgrade-audit --build-type release --version-code 3 --expected-cert-sha256 "$CERTIFICATE_SHA256"
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            staged-delivery/auto-ledger-prototype.apk \
+            staged-delivery/auto-ledger-prototype.apk.sha256 \
+            staged-delivery/verification-instrumentation.apk \
+            staged-delivery/verification-upgrade.apk
+
+      - name: Download and audit the draft's exact signed APKs (without rebuilding)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          CERTIFICATE_SHA256: ${{ inputs.certificate_sha256 }}
+        run: |
           mkdir -p delivery
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir delivery \
             --pattern auto-ledger-prototype.apk \
             --pattern auto-ledger-prototype.apk.sha256 \
             --pattern verification-instrumentation.apk \
             --pattern verification-upgrade.apk
-          (cd delivery && sha256sum --check auto-ledger-prototype.apk.sha256)
           python3 scripts/verify_delivery_signatures.py --directory delivery --expected-cert-sha256 "$CERTIFICATE_SHA256"
           python3 scripts/verify_apk.py --apk delivery/auto-ledger-prototype.apk --output-dir delivery/audit --build-type release --expected-cert-sha256 "$CERTIFICATE_SHA256"
           python3 scripts/verify_apk.py --apk delivery/verification-upgrade.apk --output-dir delivery/upgrade-audit --build-type release --version-code 3 --expected-cert-sha256 "$CERTIFICATE_SHA256"
+
+      - name: Confirm uploaded and downloaded staging files have identical bytes
+        if: inputs.delivery_ref != ''
+        run: |
+          for name in auto-ledger-prototype.apk auto-ledger-prototype.apk.sha256 verification-instrumentation.apk verification-upgrade.apk; do
+            cmp -- "staged-delivery/$name" "delivery/$name"
+          done
 
       - name: Enable KVM access
         run: |
@@ -190,5 +246,8 @@ jobs:
             delivery/upgrade-audit/
             delivery/delivery-signatures.json
             delivery/emulator-results/
+            staged-delivery/audit/
+            staged-delivery/upgrade-audit/
+            staged-delivery/delivery-signatures.json
           if-no-files-found: warn
           retention-days: 30

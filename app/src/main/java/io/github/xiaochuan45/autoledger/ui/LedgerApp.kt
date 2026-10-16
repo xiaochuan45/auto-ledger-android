@@ -373,7 +373,7 @@ private fun SettingsPage(resumeCount: Int, padding: PaddingValues) {
                     "PARSE_OR_STORAGE" -> "识别或本地保存未完成。请返回账单核对，缺失时手动补记；若反复发生，可暂停自动记账后重新开启。"
                     "SYSTEM_SETTINGS" -> "未能打开系统设置。请从手机系统应用管理检查权限、服务和电池限制，缺失账单可手动补记。"
                     "QUEUE_FULL" -> "短时间内事件过多，部分信息未处理。请核对账单，缺失时手动补记。"
-                    "INCOMPLETE_INPUT" -> "付款信息不完整，无法可靠识别。请核对账单，缺失时手动补记。"
+                    "SKIPPED_INCOMPLETE" -> "付款信息不完整，无法可靠识别。请核对账单，缺失时手动补记。"
                     else -> "部分交易信息未处理。请检查上方权限及服务状态，核对账单，缺失时手动补记。"
                 }
                 Text("最近一次异常：$description", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)

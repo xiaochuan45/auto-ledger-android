@@ -88,7 +88,11 @@ python3 scripts/verify_apk.py --apk app/build/outputs/apk/debug/app-debug.apk --
 python3 scripts/verify_apk.py --apk app/build/outputs/apk/release/app-release-unsigned.apk --output-dir evidence/release --build-type release --unsigned
 ```
 
-正式交付签名 APK 在云端私有签名后上传 Draft Release；带 `release_tag` 与公开 `certificate_sha256` 输入的工作流只下载该草稿的 APK，不重新编译，先复核权限、备份与证书，再在 API 35 模拟器安装它执行 release instrumentation。测试与升级 fixture 也必须用同一证书签名。
+正式交付签名 APK 在云端私有签名后上传 Draft Release；带 `release_tag` 与公开 `certificate_sha256` 输入的工作流只下载该草稿的 APK，不重新编译，先复核权限、备份与证书，再在 API 35 模拟器安装它执行 release instrumentation。公开指纹参数还必须匹配主源码 checkout 中的 `config/signing-certificate.sha256`。测试与升级 fixture 也必须用同一证书签名。
+
+若开发环境无法直接上传 Release 附件，可把已经签名的三份 APK 与正式包校验文件放到本仓库临时 orphan 分支，提供其精确 40 位 commit SHA 作为可选 `delivery_ref`。工作流把它单独 checkout 到 `staging/`，只复制固定四个文件：`auto-ledger-prototype.apk`、`auto-ledger-prototype.apk.sha256`、`verification-instrumentation.apk`、`verification-upgrade.apk`。验证脚本始终来自主源码 checkout，不执行或恢复 staging 中的脚本、工作流或配置。
+
+此替代路线先校验文件类型、严格格式的正式包校验文件、主源码中的公开证书 pin、三包身份及正式 / 升级包的权限和备份资源，再由 GitHub runner 上传到已经存在的草稿。随后仍重新下载附件，逐字节比较四个文件，再执行原来的签名包和覆盖升级测试。`delivery_ref` 为空时直接沿用草稿下载路线。临时分支只能放可公开的已签名 APK 和校验文件，禁止存放私钥、口令、令牌或真实账目；验证后清理该分支。
 
 脚本先运行普通测试（排除顺序敏感的 `UpgradePersistenceTest`），再单独执行 `seedBeforeUpgrade`，真实 `adb install -r` 安装 versionCode 3 fixture，最后执行 `dataSurvivesUpgrade`，核对虚构账单、编辑字段、待核对、删除与去重信息保留。该过程只验证本版本数据库格式下的覆盖更新；不是未来数据库 schema 迁移测试。
 

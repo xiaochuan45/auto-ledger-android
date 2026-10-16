@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -166,12 +167,41 @@ class LaunchSmokeTest {
 
     @Test
     fun invalidMoneyAndImpossibleDateCannotCreateBill() {
+        val merchant = "虚构校验商户 ${UUID.randomUUID().toString().take(5)}"
+        val validTime = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
         compose.onNodeWithTag("add_bill").performClick()
         compose.onNodeWithTag("edit_amount").performTextReplacement("1.999")
+        compose.onNodeWithTag("edit_time").performScrollTo().performTextReplacement(validTime)
+        compose.onNodeWithTag("edit_merchant").performScrollTo().performTextReplacement(merchant)
+        compose.onNodeWithTag("select_channel_WECHAT").performScrollTo().performClick()
+
+        // Every other required field is valid, so only invalid precision can block this save.
+        compose.onNodeWithTag("save_bill").performClick()
+        compose.onNodeWithText("请输入非负金额，最多两位小数，上限 99,999,999.99 元")
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("edit_amount").assertTextContains("1.999")
+        runBlocking { org.junit.Assert.assertTrue("Invalid precision must not create a ledger record", repository.records.first().isEmpty()) }
+
+        // With a valid amount and selected channel, the impossible calendar date must block saving.
+        compose.onNodeWithTag("edit_amount").performScrollTo().performTextReplacement("1.99")
         compose.onNodeWithTag("edit_time").performScrollTo().performTextReplacement("2026-02-30 12:00:00")
         compose.onNodeWithTag("save_bill").performClick()
-        compose.onNodeWithTag("edit_time").performScrollTo().assertTextContains("2026-02-30")
-        runBlocking { org.junit.Assert.assertTrue(repository.records.first().isEmpty()) }
+        compose.onNodeWithText("时间格式：yyyy-MM-dd HH:mm:ss；2000 年起，最多允许未来 24 小时")
+            .performScrollTo().assertIsDisplayed()
+        // assertTextContains uses exact matching unless substring=true; retain the entire entered value.
+        compose.onNodeWithTag("edit_time").assertTextContains("2026-02-30 12:00:00")
+        runBlocking { org.junit.Assert.assertTrue("Impossible dates must not create a ledger record", repository.records.first().isEmpty()) }
+
+        // Positive control: correcting just the date now saves the same draft successfully.
+        compose.onNodeWithTag("edit_time").performScrollTo().performTextReplacement(validTime)
+        compose.onNodeWithTag("save_bill").performClick()
+        compose.waitUntil(timeoutMillis = 10_000) { compose.onAllNodesWithTag("save_bill").fetchSemanticsNodes().isEmpty() }
+        waitForText(merchant)
+        runBlocking {
+            val saved = repository.records.first().single { it.merchant == merchant }
+            org.junit.Assert.assertEquals(199L, saved.amountMinor)
+            org.junit.Assert.assertEquals(RecordStatus.CONFIRMED.name, saved.status)
+        }
     }
 
     private fun waitForText(value: String) {
