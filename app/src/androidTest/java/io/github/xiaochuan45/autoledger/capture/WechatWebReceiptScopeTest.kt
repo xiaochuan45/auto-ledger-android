@@ -3,6 +3,8 @@ package io.github.xiaochuan45.autoledger.capture
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
@@ -13,6 +15,9 @@ import io.github.xiaochuan45.autoledger.core.WechatWebReceipt
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.ArrayDeque
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /** Local HTML in our own test Activity, never a payment app or external web site. */
 @RunWith(AndroidJUnit4::class)
@@ -46,9 +51,24 @@ class WechatWebReceiptScopeTest {
         assertFalse(WechatWebReceiptScope.isExactLabel(body, "当前状态"))
         assertFalse(WechatWebReceiptScope.isExactLabel("文章提到当前状态", "当前状态"))
         assertTrue(WechatWebReceiptScope.isExactLabel(" 当前状态 ", "当前状态"))
+        val labelOnly = object : CharSequence {
+            override val length = 4
+            override fun get(index: Int): Char = "当前状态"[index]
+            override fun subSequence(startIndex: Int, endIndex: Int): CharSequence = error("No substring copies")
+            override fun toString(): String = error("No label or field-value copies")
+        }
+        assertTrue(WechatWebReceiptScope.isExactLabel(labelOnly, "当前状态"))
     }
 
     private fun withPage(labels: List<String>, nativeLabels: Boolean, check: (AccessibilityNodeInfo) -> Unit) {
+        val automation = instrumentation.uiAutomation
+        // Connect before constructing WebView so its provider observes accessibility enabled.
+        val originalInfo = automation.serviceInfo
+        automation.serviceInfo = automation.serviceInfo.apply {
+            flags = flags or AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
+        }
+        val loaded = CountDownLatch(1)
+        try {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 val layout = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
@@ -56,29 +76,48 @@ class WechatWebReceiptScopeTest {
                     layout.addView(TextView(activity).apply { text = label })
                 }
                 val web = WebView(activity)
+                web.webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) { loaded.countDown() }
+                }
                 layout.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
                 activity.setContentView(layout)
                 // Only inert, fictional markup; no JS, network URLs or user's transaction data.
-                web.loadData("<html><meta name='viewport' content='width=device-width, initial-scale=1'><body>" +
+                web.loadDataWithBaseURL(null, "<html><meta name='viewport' content='width=device-width, initial-scale=1'><body>" +
                     "<p>FICTIONAL_SCOPE_READY</p>" + labels.joinToString("") { "<p>$it</p>" } +
-                    "</body></html>", "text/html; charset=utf-8", "UTF-8")
+                    "</body></html>", "text/html", "UTF-8", null)
             }
+            assertTrue("Local HTML must finish loading", loaded.await(15, TimeUnit.SECONDS))
             val deadline = SystemClock.uptimeMillis() + 15_000
             while (SystemClock.uptimeMillis() < deadline) {
                 val root = instrumentation.uiAutomation.rootInActiveWindow
                 if (root != null) {
-                    var ready = false
                     try {
-                        val sentinels = root.findAccessibilityNodeInfosByText("FICTIONAL_SCOPE_READY").orEmpty()
-                        ready = sentinels.isNotEmpty()
-                        sentinels.forEach(::release)
-                        if (ready) { check(root); return }
+                        if (hasFictionalSentinel(root)) { check(root); return }
                     } finally { release(root) }
                 }
                 SystemClock.sleep(100)
             }
             fail("Local WebView accessibility tree did not become available")
         }
+        } finally { automation.serviceInfo = originalInfo }
+    }
+
+    /** Test-only traversal of our own fictional HTML; find-by-text is not implemented by every provider. */
+    @Suppress("DEPRECATION")
+    private fun hasFictionalSentinel(root: AccessibilityNodeInfo): Boolean {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(AccessibilityNodeInfo.obtain(root))
+        var visited = 0
+        try {
+            while (queue.isNotEmpty() && visited++ < 200) {
+                val node = queue.removeFirst()
+                try {
+                    if (node.text?.toString()?.contains("FICTIONAL_SCOPE_READY") == true) return true
+                    for (index in 0 until node.childCount) node.getChild(index)?.let(queue::addLast)
+                } finally { release(node) }
+            }
+            return false
+        } finally { while (queue.isNotEmpty()) release(queue.removeFirst()) }
     }
 
     @Suppress("DEPRECATION")
