@@ -4,7 +4,7 @@
 
 ## 当前进度
 
-最新 `0.2.4-prototype` 修正微信网页字段合并、可选栏目和重复节点的准入问题，增加节点/过滤原因诊断与「读取一次已有微信账单」。0.2.3 真机旧详情仍失败：14 次栏目拒绝、解析 0；本轮修复可复现差异，**尚未证明微信 8.0.78 / Android 16 的真实文字可读，也未证明拼多多付款自动入账已修复**。网页新记录始终待核对，确认前不计支出，不修改已有同交易号记录。依据见 [GitHub 对照调研](docs/WECHAT_ACCESSIBILITY_RESEARCH.md)。
+最新 `0.2.4-prototype` 修正微信网页字段合并、可选栏目和重复节点的准入问题，增加节点/过滤原因诊断与「读取一次已有微信账单」。0.2.3 真机旧详情仍失败：14 次栏目拒绝、解析 0；0.2.4 真机也未记录：一次读取超时、尝试 0 次，未到网页检查。本轮修复可复现差异，**尚未证明微信 8.0.78 / Android 16 的真实文字可读，也未证明拼多多付款自动入账已修复**。网页新记录始终待核对，确认前不计支出，不修改已有同交易号记录。依据见 [GitHub 对照调研](docs/WECHAT_ACCESSIBILITY_RESEARCH.md)。
 
 **[最新 APK：本地账本 0.2.4-prototype](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.4/auto-ledger-prototype.apk)**，约 7.16 MB，最低 Android 8.0；[发布页与证据](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.4)。同签名直接覆盖旧版，不卸载或清数据。结束只读检查 → 设置点「读取一次已有微信账单」→ 30 秒内退出并重新打开微信同一笔旧详情 → 查看待核对和复制诊断，无需再次消费，详见 [手机步骤](docs/PHASE2_TESTING.md)。
 
