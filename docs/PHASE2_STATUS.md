@@ -1,5 +1,27 @@
 # 第二阶段：自动识别小样
 
+## 最新 0.2.3：微信网页账单待核对识别
+
+版本 `0.2.3-prototype` / code `5` 已公开，包名 `io.github.xiaochuan45.autoledger`，沿用原固定签名直接覆盖 `0.2.2` / code `4`。从用户的微信 8.0.78 / Android API 36 反馈确认详情使用 `MMWebViewUI`，旧版在准入规则被跳过；新版本的真实字段读取和自动付款仍待用户验证。
+
+本版先在唯一可见 WebView 有界比较短栏目，完整结构通过后才有限读取；未匹配内容不解析或保存。所有该路径的新记录均待核对，不自动计支出；网页来源不能冒充认证，不修改已有同交易号账单。未知商户和平台留空。只读兼容性检查开启时仍阻止栏目比较和自动记录。
+
+| 项目 | 证据 |
+|---|---|
+| 下载 | [APK](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.3/auto-ledger-prototype.apk) / [Release](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.3) |
+| 生产源码 | [`d0a3f37f633fdec895b07b4e35127495934e0659`](https://github.com/xiaochuan45/auto-ledger-android/commit/d0a3f37f633fdec895b07b4e35127495934e0659) |
+| APK 大小 / SHA-256 | 7,155,098 bytes / `b42014ac8c7982d4f74d2e3a4d0d82f569f73f5ffd43c71900698a2facc20cf0` |
+| 签名证书 SHA-256 | `0e2a128391be8ae3d39140ed5d2cd7de8256d62b19233b3593d9ef97180b0073`，与旧版相同 |
+| 构建及规则 | JVM 67 项、Python 8 项、Lint 和构建通过 |
+| 源码矩阵 | [run 38858428313](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38858428313) 成功：API 26 实际执行 37 项，API 35 / 36 各 38 项。API 29+ shell 通知测试在 API 26 按 SDK 条件不执行 |
+| 最终准确签名 APK | [run 38858471691](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38858471691) 成功：API 35 普通 38 项；公开旧 code4 写入虚构数据 1 项、实际覆盖准确 code5 后保留账单、去重及采集开关校验 1 项均通过 |
+| 权限与证据 | [审计报告](evidence/0.2.3-prototype/permissions-audit.md) / [artifact 12028790553](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38858471691/artifacts/12028790553)，无联网权限，无新增权限 |
+| 公开下载 | APK 与校验文件均 HTTP 200；下载 APK 与被测签名包逐字节一致 |
+| 用户手机 0.2.3 | 安装、栏目匹配、字段读取、待核对保存与去重全部待验证；未证明任何新付款或后台扣费已成功 |
+
+现在只需结束只读检查、重新打开已有付款详情，再查看待核对及重开去重，无需消费。步骤及边界见 [0.2.3 说明](RELEASE_0.2.3.md) 和 [手机验证](PHASE2_TESTING.md)。下方版本证据与失败事实作为历史保留。
+
+
 ## 最新真机反馈：0.2.1 仍未识别拼多多微信付款
 
 2026-10-16，用户确认再次使用拼多多 → 微信付款，仍未自动形成记录。付款后截图显示通知和无障碍均已授权、已连接；「本次运行诊断」三个计数均为 0，通知恢复请求 2 次。这只能证明当前进程没有输入通过筛选进入解析，不能证明系统没有发送窗口或通知事件，也不能证明付款时始终连接。真实交易金额和原文没有收集。
@@ -18,9 +40,9 @@
 
 用户确认微信版本 `8.0.78`，系统 API 36。第二份摘要为累计窗口事件 305、支持窗口 0、通知事件 0、进入解析和完成 0、异常 0；跳过分为只读保护 62、无已验证窗口 229、不支持页面 14。检查类型为 `com.tencent.mm.plugin.webview.ui.tools.MMWebViewUI`。与用户在手机查看的付款详情一致，确认旧版未将此通用网页容器纳入付款原文读取；不能据此证明放开容器后字段可读，也不能把通知 0 推广为支付时无通知。
 
-当前制作 `0.2.3` 的窄范围网页账单待核对识别：先查询同一 WebView 的固定完整栏目，再有界读取；来源未验证时一律待核对，不自动计支出，并且不能修改已有同交易号账单。真实截图、金额、付款时间和订单号未复制到仓库或自动化样本。此次截图用于确认可见页面类型，不是自动入账通过证据。实现、限制与不消费的验证步骤见 [0.2.3 说明](RELEASE_0.2.3.md)。
+已发布 `0.2.3` 的窄范围网页账单待核对识别：先在同一 WebView 有界比较短栏目，结构完整后再有限读取；来源未验证时一律待核对，不自动计支出，并且不能修改已有同交易号账单。真实截图、金额、付款时间和订单号未复制到仓库或自动化样本。此次截图用于确认可见页面类型，不是自动入账通过证据。实现、限制与不消费的验证步骤见 [0.2.3 说明](RELEASE_0.2.3.md)。
 
-## 最新 0.2.2 APK 与验证证据
+## 历史 0.2.2 APK 与验证证据
 
 - [直接下载 APK](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.2/auto-ledger-prototype.apk)，7,138,714 bytes；SHA-256 `466197679f9f79b8f744696938d669713c549ac98603231865777ea539778fa7`。
 - 生产源码 `0c967f5c09bf57c5531b9ac5a238e0b4ea3d5732`；固定证书与旧版相同。公开 APK、校验文件 HTTP 200，下载 APK 与被测文件逐字节相同。

@@ -1,6 +1,6 @@
 # 本地账本 · 微信网页账单待核对识别 0.2.3-prototype
 
-本版针对用户在微信 8.0.78 / Android API 36 看到的网页付款详情：它使用通用 `MMWebViewUI`，旧版精确付款 Activity 白名单不会命中。代码新增窄范围栏目检查与待核对识别，**并非拼多多付款实时自动入账已验证或已修复的声明**。构建、自动化、准确签名包和覆盖升级证据验证完成后补充，完成前不公开下载。
+本版针对用户在微信 8.0.78 / Android API 36 看到的网页付款详情：它使用通用 `MMWebViewUI`，旧版精确付款 Activity 白名单不会命中。代码新增窄范围栏目检查与待核对识别，**并非拼多多付款实时自动入账已验证或已修复的声明**。代码已实现；构建、Lint、JVM 67 项与 Python 8 项通过；源码模拟器 API 26 实际执行 37 项、API 35 和 36 各 38 项通过。准确固定签名 APK 另通过 API 35 的 38 项测试及公开旧 0.2.2 → 本版真实覆盖升级的数据与开关保留验证。用户手机本版仍待验证。
 
 版本 `0.2.3-prototype` / code `5`，包名 `io.github.xiaochuan45.autoledger`，同一固定签名直接覆盖 `0.2.2` / code `4`；不要先卸载或清除数据。数据库格式未变。
 
@@ -19,7 +19,7 @@
 
 1. 覆盖安装本版，保持总开关和微信渠道开启，确认两项服务连接。
 2. **结束只读兼容性检查**，确认「检查未运行」。本轮是实际尝试识别，保持只读检查开启会按设计拦截。
-3. 从微信钱包账单重新打开同一笔已有付款详情，停留几秒，再返回账本；不要清后台，无需再次消费或发送付款截图。
+3. 从微信钱包账单先退出详情，再重新打开同一笔已有付款详情，停留几秒，再返回账本；不要清后台，无需再次消费或发送付款截图。
 4. 查看「待核对」是否出现一项。已有交易号时应复用原记录；核对金额、实际付款时间和时间来源。商户或平台未知是允许结果，请勿凭空补全。未核对前无需确认入账。
 5. 若没有结果，在设置刷新诊断，复制无账单原文的摘要。看网页结构命中、进入解析、完成与固定跳过原因；不要发送实际金额或交易号。
 6. 在账本不做修改的情况下重开一次该详情，应仍只有同一项；这是测试旧详情读取与去重，不代表新付款、扫码、免密或后台扣费已经成功。
@@ -30,15 +30,20 @@
 
 | 项目 | 当前证据 |
 |---|---|
-| 生产源码 | [`53caa5832b7194617e7687cdc4ac87a5afbef2c5`](https://github.com/xiaochuan45/auto-ledger-android/commit/53caa5832b7194617e7687cdc4ac87a5afbef2c5) |
+| 生产源码 | [`d0a3f37f633fdec895b07b4e35127495934e0659`](https://github.com/xiaochuan45/auto-ledger-android/commit/d0a3f37f633fdec895b07b4e35127495934e0659) |
 | 版本与大小 | `0.2.3-prototype` / code `5`；7,155,098 bytes |
-| APK SHA-256 | `2026f001bd64100676d4477335faf92ffe80406fc69729238bfda4b2c9071a50` |
+| APK SHA-256 | `b42014ac8c7982d4f74d2e3a4d0d82f569f73f5ffd43c71900698a2facc20cf0` |
 | 证书 SHA-256 | `0e2a128391be8ae3d39140ed5d2cd7de8256d62b19233b3593d9ef97180b0073`，与旧版一致 |
 | 本地构建与规则 | JVM 67 项、Python 8 项通过；构建、Lint 通过 |
-| 源码模拟器 | 第一轮暴露 WebView 不支持文字查询的适配问题，已修正；最终矩阵待重新验证 |
-| 准确签名包 | 前一候选覆盖升级数据保留通过，但两项网页测试失败，未公开；最终字节待重新构建签名和验证 |
+| 源码模拟器 | [run 38858428313](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38858428313) 成功：API 26 实际执行 37 项；API 35 / 36 各 38 项；API 29+ 的真实系统通知 shell 测试在 API 26 按 SDK 条件不执行，不计作通过 |
+| 准确签名包 | [权限与签名审计](evidence/0.2.3-prototype/permissions-audit.md)通过；[run 38858471691](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38858471691) 成功：公开旧 code4 写入数据 1 项 → 准确新 code5 覆盖安装后保留账单、去重信息与采集开关 1 项；随后普通 38 项全部通过 |
+| 签名验证附件 | [artifact 12028790553](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38858471691/artifacts/12028790553)（GitHub 登录下载） |
 | 用户手机 | 微信 8.0.78 / API 36 的新版本全部待验证；0.2.2 网页入口不受支持，未发生自动账单识别 |
 
-发布仍为草稿，完成验证前不提供可用下载承诺。
+[下载 auto-ledger-prototype.apk](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.3/auto-ledger-prototype.apk)；[发布页 prototype-v0.2.3](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.3)。
+
+公开 APK 与校验文件已实测 HTTP 200，下载 APK 与通过验证的签名文件逐字节相同。
+
+虚构本地 HTML 测试使用与正式服务相同的默认无障碍 flags，验证完整栏目、缺栏目且原生外层有同名文字、短栏目比较不复制长正文等边界；解析与 Room 测试验证支出候选、待核对、历史重开、连续同额不同交易及已有账单保护。测试没有打开微信或拼多多，不能代替实机字段可读和捕获成功的证据。
 
 完整功能缺口与签名保管边界见 [项目状态](https://github.com/xiaochuan45/auto-ledger-android/blob/main/docs/PHASE2_STATUS.md)。
