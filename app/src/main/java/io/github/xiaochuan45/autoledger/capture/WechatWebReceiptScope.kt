@@ -9,18 +9,19 @@ internal object WechatWebReceiptScope {
     private val webClasses = setOf("android.webkit.WebView", "com.tencent.mm.ui.widget.MMWebView",
         "com.tencent.mm.ui.widget.MMWebViewWithJsApi", "com.tencent.xweb.WebView", "com.tencent.smtt.sdk.WebView")
 
-    private class Inspection {
+    private class Inspection(val requestId: Long?) {
         var native = 0; var web = 0; var texts = 0; var longTexts = 0; var nullPackages = 0; var mask = 0
+        var rootVisible: Boolean? = null; var rootChildren = 0; var hiddenContainers = 0
         var foreign = 0; var otherWindows = 0; var invisible = 0; var protected = 0; var nativeReceipt = false
         fun snapshot(reason: WebReceiptRejection) = WebReceiptInspection(reason, native, web, texts, longTexts, nullPackages, mask,
-            foreign, otherWindows, invisible, protected, nativeReceipt)
+            foreign, otherWindows, invisible, protected, nativeReceipt, rootVisible, rootChildren, hiddenContainers, requestId)
     }
 
     /** Caller keeps root; returned receipt subtree is separately owned. Rejecting never calls the body reader. */
     @Suppress("DEPRECATION")
     fun findReceiptRoot(root: AccessibilityNodeInfo, expectedPackage: String, windowId: Int,
-        selectedMini: Boolean = false): AccessibilityNodeInfo? {
-        val stats = Inspection()
+        selectedMini: Boolean = false, requestId: Long? = null): AccessibilityNodeInfo? {
+        val stats = Inspection(requestId)
         fun reject(reason: WebReceiptRejection): Nothing? {
             CaptureDiagnostics.webInspection(stats.snapshot(reason)); return null
         }
@@ -53,11 +54,25 @@ internal object WechatWebReceiptScope {
                 } finally { if (!retained) release(node) }
             }
             val web = candidate ?: return reject(WebReceiptRejection.NO_WEBVIEW)
+            stats.rootVisible = web.isVisibleToUser
+            stats.rootChildren = web.childCount.coerceIn(0, MAX_WEB_NODES + 1)
             queue.add(AccessibilityNodeInfo.obtain(web))
             while (queue.isNotEmpty()) {
                 if (++stats.web > MAX_WEB_NODES) return reject(WebReceiptRejection.WEB_LIMIT)
                 val node = queue.removeFirst()
                 try {
+                    if (selectedMini && !node.isVisibleToUser) {
+                        val access = SelectedReceiptNodePolicy.access(node.packageName?.toString(), expectedPackage,
+                            node.windowId, windowId, false, node.isEditable, node.isPassword,
+                            node.className?.toString(), node.childCount)
+                        if (access == ReceiptNodeAccess.CHILDREN_ONLY) {
+                            stats.invisible++; stats.hiddenContainers++
+                            // Do not access this wrapper's text or description; every child is checked independently.
+                            val failed = enqueue(node, queue, MAX_WEB_NODES - stats.web, web = true)
+                            if (failed != null) return reject(failed)
+                            continue
+                        }
+                    }
                     if (!safeNode(node, expectedPackage, windowId, stats)) continue
                     if (node.packageName == null) stats.nullPackages++
                     val text = node.text

@@ -25,9 +25,15 @@ data class WebReceiptInspection(
     val invisibleNodes: Int = 0,
     val protectedNodes: Int = 0,
     val nativeReceipt: Boolean = false,
+    val rootVisible: Boolean? = null,
+    val rootChildren: Int = 0,
+    val hiddenContainers: Int = 0,
+    val requestId: Long? = null,
 ) {
     fun summary(): String = buildString {
         appendLine("最近网页检查：${reason.label}")
+        appendLine("检查归属：${requestId?.let { "主动请求 #$it" } ?: "自动或独立检查"}")
+        appendLine("根节点可见：${rootVisible?.let { if (it) "是" else "否" } ?: "未知"}；根子节点 $rootChildren；仅遍历子节点的不可见容器 $hiddenContainers")
         appendLine("详情结构：${if (nativeReceipt) "主动选择的小程序窗口栏目" else "网页栏目"}")
         appendLine("原生节点 $nativeNodes；详情节点 $webNodes；有文字节点 $textNodes；长文字节点 $longTextNodes；缺包名节点 $nullPackageNodes")
         appendLine("过滤：异包 $foreignNodes；窗口不符 $otherWindowNodes；不可见 $invisibleNodes；敏感控件 $protectedNodes")

@@ -31,6 +31,22 @@ class CapturePrivacyTest {
         CaptureDiagnostics.clearCompatibilityCheck()
     }
 
+    @Test fun newRequestClearsPriorStructureResultAndReportUsesTheCurrentRequestId() {
+        CaptureDiagnostics.requestOneShotWechatReceipt()
+        val old = CaptureDiagnostics.oneShotSnapshot().requestId
+        CaptureDiagnostics.webInspection(WebReceiptInspection(WebReceiptRejection.FILTERED_NODES,
+            nativeReceipt = true, rootVisible = false, requestId = old))
+        assertNotNull(CaptureDiagnostics.snapshot().webInspection)
+        CaptureDiagnostics.requestOneShotWechatReceipt()
+        assertNull(CaptureDiagnostics.snapshot().webInspection)
+        val fresh = CaptureDiagnostics.oneShotSnapshot()
+        assertTrue(fresh.requestId > old)
+        val report = CaptureDiagnostics.compatibilityReport("fictional-test", 36)
+        assertTrue(report.contains("一次微信读取 #${fresh.requestId}"))
+        assertFalse(report.contains("最近网页检查"))
+        assertEquals(0, fresh.windowChecks)
+    }
+
     @Test fun enteringReadOnlyModeCancelsOneTimeTextReadWithoutRetainingFields() {
         CaptureDiagnostics.requestOneShotWechatReceipt()
         assertEquals(OneShotState.WAITING, CaptureDiagnostics.oneShotSnapshot().state)

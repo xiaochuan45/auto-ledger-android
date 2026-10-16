@@ -245,7 +245,7 @@ private fun BillsPage(records: List<LedgerRecord>, filter: Int, onFilter: (Int) 
             item {
                 InformationCard(
                     if (filter == 2) "没有待核对账单" else if (filter == 1) "没有已确认账单" else "还没有账单",
-                    "可点右下角补记。自动记账需先在设置中开启开关及系统权限；真实支付识别仍待手机验证。",
+                    "可点右下角补记。当前为识别小样，支付场景仍在适配；权限已开启、服务已连接，也可能尚不能识别这笔付款。",
                 )
             }
         }
@@ -400,7 +400,7 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
         }
         SettingsCard("已有微信账单读取一次") {
             Text("点击后30秒内，退出微信付款详情再重新打开它。支持微信网页和小程序交易详情；小程序随入口事件检查栏目，最多8次，栏目齐全才读取正文一次。不轮询，不截图，结果仅待核对。页面没有提供文字时仍无法识别。", style = MaterialTheme.typography.bodySmall)
-            Text(oneShot.state.label, modifier = Modifier.testTag("one_shot_status"))
+            Text("请求 #${oneShot.requestId}：${oneShot.state.label}", modifier = Modifier.testTag("one_shot_status"))
             Text("小程序窗口检查 ${oneShot.windowChecks}/8；${oneShot.stage.label}", style = MaterialTheme.typography.bodySmall)
             Text("本次请求观察到的入口：${oneShot.windowTypes.joinToString("、").ifEmpty { "无" }}", style = MaterialTheme.typography.bodySmall)
             OutlinedButton(onClick = { CaptureDiagnostics.requestOneShotWechatReceipt(); refreshCount++ },

@@ -96,6 +96,68 @@ class WechatWebReceiptScopeTest {
         }
     }
 
+    @Test fun invisibleStructuralRootStillRoutesToVisibleReceiptFieldsWithoutReadingItsOwnText() {
+        val rows = listOf("虚构商户\n-42.70", "当前状态支付成功", "支付时间2025年3月12日 10:20:30",
+            "支付方式零钱", "交易单号FICTIONAL-INVISIBLE-WRAPPER-A")
+        withPage(emptyList(), false, nativeRows = rows, nativeOnly = true, invisibleWrapper = true) { outer ->
+            val root = requireNotNull(findHiddenWrapper(outer))
+            try {
+                assertFalse(root.isVisibleToUser)
+                val scoped = WechatWebReceiptScope.findReceiptRoot(root, instrumentation.targetContext.packageName,
+                    root.windowId, selectedMini = true, requestId = 7)
+                assertNotNull(scoped)
+                val stats = requireNotNull(CaptureDiagnostics.snapshot().webInspection)
+                assertEquals(false, stats.rootVisible)
+                assertTrue(stats.rootChildren >= 5)
+                assertTrue(stats.hiddenContainers > 0)
+                assertEquals(7L, stats.requestId)
+                val pieces = requireNotNull(PaymentTextReader.read(requireNotNull(scoped),
+                    instrumentation.targetContext.packageName, true, selectedMini = true))
+                assertFalse(pieces.any { it.contains("FICTIONAL_HIDDEN_WRAPPER") })
+                val parsed = requireNotNull(PaymentParser.parse(CaptureInput(CaptureSource.USER_WEB_RECEIPT,
+                    PaymentChannel.WECHAT.packageName, pieces, 1_800_000_000_000L, "fictional-invisible-wrapper",
+                    screenClass = WechatWebReceipt.MINI_WINDOW)))
+                assertEquals(4270L, parsed.amountMinor)
+                assertEquals(RecordStatus.REVIEW, parsed.status)
+                // The exception is scoped to explicit mini receipts, not ordinary automatic readers.
+                assertTrue(requireNotNull(PaymentTextReader.read(AccessibilityNodeInfo.obtain(root),
+                    instrumentation.targetContext.packageName, true)).isEmpty())
+            } finally { release(root) }
+        }
+    }
+
+    @Test fun invisibleTextCannotProvideAMissingRequiredColumnThroughAHiddenWrapper() {
+        val rows = listOf("当前状态支付成功", "支付时间2025年3月12日 10:20:30",
+            "支付方式零钱", "交易单号FICTIONAL-HIDDEN-STATUS-A")
+        withPage(emptyList(), false, nativeRows = rows, nativeOnly = true, invisibleWrapper = true,
+            hiddenRowIndices = setOf(0)) { root ->
+            assertNull(WechatWebReceiptScope.findReceiptRoot(root, instrumentation.targetContext.packageName,
+                root.windowId, selectedMini = true))
+            val stats = requireNotNull(CaptureDiagnostics.snapshot().webInspection)
+            assertEquals(WebReceiptRejection.MISSING_LABELS, stats.reason)
+            assertEquals(14, stats.labelMask)
+            assertTrue(stats.hiddenContainers > 0)
+        }
+    }
+
+    @Test fun entirelyInvisibleTreeCannotProduceAnyReceiptTextOrLabels() {
+        val rows = WechatWebReceipt.requiredLabels
+        withPage(emptyList(), false, nativeRows = rows, nativeOnly = true, invisibleWrapper = true,
+            hiddenRowIndices = (0..rows.size).toSet()) { outer ->
+            val root = requireNotNull(findHiddenWrapper(outer))
+            try {
+                assertNull(WechatWebReceiptScope.findReceiptRoot(root, instrumentation.targetContext.packageName,
+                    root.windowId, selectedMini = true))
+                val stats = requireNotNull(CaptureDiagnostics.snapshot().webInspection)
+                assertEquals(WebReceiptRejection.FILTERED_NODES, stats.reason)
+                assertEquals(0, stats.textNodes); assertEquals(0, stats.labelMask)
+                assertTrue(stats.rootChildren > 0)
+                assertTrue(requireNotNull(PaymentTextReader.read(AccessibilityNodeInfo.obtain(root),
+                    instrumentation.targetContext.packageName, true, selectedMini = true)).isEmpty())
+            } finally { release(root) }
+        }
+    }
+
     @Test fun completeLabelsInOneWebViewAreScopedWithoutReadingNativeChrome() {
         withPage(WechatWebReceipt.labels, false) { root ->
             val web = WechatWebReceiptScope.findReceiptRoot(root, instrumentation.targetContext.packageName, root.windowId)
@@ -177,7 +239,8 @@ class WechatWebReceiptScopeTest {
     }
 
     private fun withPage(labels: List<String>, nativeLabels: Boolean, html: String? = null,
-        nativeRows: List<String> = emptyList(), nativeOnly: Boolean = false, check: (AccessibilityNodeInfo) -> Unit) {
+        nativeRows: List<String> = emptyList(), nativeOnly: Boolean = false,
+        invisibleWrapper: Boolean = false, hiddenRowIndices: Set<Int> = emptySet(), check: (AccessibilityNodeInfo) -> Unit) {
         val automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
         // Connect before constructing WebView so its provider observes accessibility enabled.
         val originalInfo = automation.serviceInfo
@@ -207,13 +270,28 @@ class WechatWebReceiptScopeTest {
             var page: WebView? = null
             try {
             scenario.onActivity { activity ->
-                val layout = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+                val layout = object : LinearLayout(activity) {
+                    override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+                        super.onInitializeAccessibilityNodeInfo(info)
+                        if (invisibleWrapper) {
+                            info.className = "android.widget.LinearLayout"
+                            info.isVisibleToUser = false
+                            info.text = "FICTIONAL_HIDDEN_WRAPPER must never become a field"
+                        }
+                    }
+                }.apply { orientation = LinearLayout.VERTICAL; importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES }
+                fun row(value: String, index: Int) = object : TextView(activity) {
+                    override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+                        super.onInitializeAccessibilityNodeInfo(info)
+                        if (index in hiddenRowIndices) info.isVisibleToUser = false
+                    }
+                }.apply { text = value }
                 if (nativeLabels) WechatWebReceipt.labels.forEach { label ->
                     layout.addView(TextView(activity).apply { text = label })
                 }
-                nativeRows.forEach { value -> layout.addView(TextView(activity).apply { text = value }) }
+                nativeRows.forEachIndexed { index, value -> layout.addView(row(value, index)) }
                 if (nativeOnly) {
-                    layout.addView(TextView(activity).apply { text = "FICTIONAL_SCOPE_READY" })
+                    layout.addView(row("FICTIONAL_SCOPE_READY", nativeRows.size))
                     activity.setContentView(layout)
                     loaded.countDown()
                     return@onActivity
@@ -263,6 +341,26 @@ class WechatWebReceiptScopeTest {
             // Restore the ordinary test connection, including its normal service suppression.
             instrumentation.uiAutomation
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun findHiddenWrapper(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(AccessibilityNodeInfo.obtain(root))
+        try {
+            var count = 0
+            while (queue.isNotEmpty() && count++ < 200) {
+                val node = queue.removeFirst()
+                var kept = false
+                try {
+                    if (!node.isVisibleToUser && node.className?.toString() == "android.widget.LinearLayout" && node.childCount > 0) {
+                        kept = true; return node
+                    }
+                    repeat(node.childCount) { node.getChild(it)?.let(queue::addLast) }
+                } finally { if (!kept) release(node) }
+            }
+            return null
+        } finally { while (queue.isNotEmpty()) release(queue.removeFirst()) }
     }
 
     // UiAutomation uses Runtime.exec argv tokenization, not shell parsing: quotes become literal data.

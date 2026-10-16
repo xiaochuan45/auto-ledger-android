@@ -118,7 +118,8 @@ class LedgerAccessibilityService : AccessibilityService() {
                 CaptureDiagnostics.takeOneShotWechatReceipt(expected.channel, expected.screenClass)
             val scopedRoot = if (webReceipt) {
                 val matched = try { WechatWebReceiptScope.findReceiptRoot(root, expected.channel.packageName, expected.windowId,
-                    selectedMini = expected.explicitOnly) }
+                    selectedMini = expected.explicitOnly, requestId = if (expected.explicitOnly || requested)
+                        CaptureDiagnostics.oneShotSnapshot().requestId else null) }
                     catch (failure: RuntimeException) { releaseNode(root); throw failure }
                 if (matched == null && (!requested || expected.explicitOnly)) {
                     releaseNode(root)
@@ -135,7 +136,7 @@ class LedgerAccessibilityService : AccessibilityService() {
             val selected = if (expected.explicitOnly)
                 CaptureDiagnostics.takeOneShotWechatReceipt(expected.channel, expected.screenClass) else requested
             if (expected.explicitOnly && !selected) { releaseNode(scopedRoot); clearWindow(); return }
-            val texts = PaymentTextReader.read(scopedRoot, expected.channel.packageName, webReceipt) ?: return
+            val texts = PaymentTextReader.read(scopedRoot, expected.channel.packageName, webReceipt, selectedMini = expected.explicitOnly) ?: return
             if (texts.isEmpty()) {
                 CaptureDiagnostics.skipped(CaptureSkip.EMPTY_TEXT, CaptureSource.ACCESSIBILITY)
                 return

@@ -6,6 +6,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class OneShotWechatReceiptTest {
+    @Test fun eachArmIdentifiesANewRequestWithoutConfusingProcessAttemptTotals() {
+        val request = OneShotWechatReceipt { 100L }
+        assertEquals(0L, request.snapshot().requestId)
+        request.arm(); assertEquals(1L, request.snapshot().requestId)
+        assertTrue(request.consume(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW))
+        request.arm()
+        assertEquals(2L, request.snapshot().requestId)
+        assertEquals(0, request.snapshot().windowChecks)
+        assertEquals(1, request.snapshot().attempts)
+    }
+
     @Test fun windowChecksAreThrottledBoundedAndBodyIsStillConsumedOnlyOnce() {
         var now = 100L
         val request = OneShotWechatReceipt { now }.apply { arm() }

@@ -7,7 +7,9 @@ import java.util.ArrayDeque
 
 /** Owns and releases root. Native behavior is unchanged; web text follows document order. */
 internal object PaymentTextReader {
-    fun read(root: AccessibilityNodeInfo, expectedPackage: String, webReceipt: Boolean = false): List<String>? {
+    fun read(root: AccessibilityNodeInfo, expectedPackage: String, webReceipt: Boolean = false,
+        selectedMini: Boolean = false): List<String>? {
+        val expectedWindowId = root.windowId
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         val texts = TransientTextBuffer(if (webReceipt) 48 else 24)
         val limit = if (webReceipt) WechatWebReceiptScope.MAX_WEB_NODES else 150
@@ -20,10 +22,15 @@ internal object PaymentTextReader {
                 try {
                     val pkg = node.packageName?.toString()
                     if (pkg != null && pkg != expectedPackage) continue
-                    if (!node.isVisibleToUser || node.isPassword || node.isEditable ||
-                        node.className?.toString()?.contains("EditText", true) == true) continue
-                    val text = node.text
-                    val desc = node.contentDescription
+                    if (selectedMini && node.windowId != expectedWindowId) continue
+                    if (node.isPassword || node.isEditable || node.className?.toString()?.contains("EditText", true) == true) continue
+                    val visible = node.isVisibleToUser
+                    if (!visible && !(webReceipt && selectedMini && SelectedReceiptNodePolicy.access(pkg, expectedPackage,
+                            node.windowId, expectedWindowId, false, false, false, node.className?.toString(),
+                            node.childCount) == ReceiptNodeAccess.CHILDREN_ONLY)) continue
+                    // Hidden structural wrappers may route to visible children; never query their own text/description.
+                    val text = if (visible) node.text else null
+                    val desc = if (visible) node.contentDescription else null
                     if (hasSensitiveText(text) || hasSensitiveText(desc)) {
                         CaptureDiagnostics.skipped(CaptureSkip.SENSITIVE_GUARD, CaptureSource.ACCESSIBILITY)
                         return null

@@ -11,10 +11,11 @@ enum class OneShotStage(val label: String) {
 }
 data class OneShotSnapshot(val state: OneShotState, val remainingMillis: Long, val attempts: Int,
     val windowTypes: List<String> = emptyList(), val windowChecks: Int = 0,
-    val stage: OneShotStage = OneShotStage.WAITING)
+    val stage: OneShotStage = OneShotStage.WAITING, val requestId: Long = 0)
 
 /** Explicit, process-only, single attempt; never starts a timer, reader or background task. */
 internal class OneShotWechatReceipt(private val clock: () -> Long) {
+    private var requestId = 0L
     private var started: Long? = null
     private var state = OneShotState.NONE
     private var attempts = 0
@@ -22,7 +23,7 @@ internal class OneShotWechatReceipt(private val clock: () -> Long) {
     private var windowChecks = 0
     private var lastCheck: Long? = null
     private var stage = OneShotStage.WAITING
-    @Synchronized fun arm() { started = clock(); state = OneShotState.WAITING; windowTypes.clear(); windowChecks = 0; lastCheck = null; stage = OneShotStage.WAITING }
+    @Synchronized fun arm() { if (requestId < Long.MAX_VALUE) requestId++; started = clock(); state = OneShotState.WAITING; windowTypes.clear(); windowChecks = 0; lastCheck = null; stage = OneShotStage.WAITING }
     @Synchronized fun window(channel: PaymentChannel, className: String) {
         if (snapshot().state != OneShotState.WAITING || channel != PaymentChannel.WECHAT ||
             className.length > 200 || !className.startsWith(channel.packageName + ".") ||
@@ -38,7 +39,7 @@ internal class OneShotWechatReceipt(private val clock: () -> Long) {
             state = OneShotState.EXPIRED; started = null
         }
         return OneShotSnapshot(state, if (state == OneShotState.WAITING) DURATION - (elapsed ?: DURATION) else 0, attempts,
-            windowTypes.toList(), windowChecks, stage)
+            windowTypes.toList(), windowChecks, stage, requestId)
     }
     /** Event-driven metadata/column checks only. No timer, body or retry after consumption. */
     @Synchronized fun beginWindowCheck(channel: PaymentChannel, screenClass: String): Boolean {
