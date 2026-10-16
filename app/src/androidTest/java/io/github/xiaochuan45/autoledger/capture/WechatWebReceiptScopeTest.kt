@@ -3,6 +3,9 @@ package io.github.xiaochuan45.autoledger.capture
 import android.os.SystemClock
 import android.os.Build
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.UiAutomation
+import android.content.Context
+import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -26,6 +29,7 @@ import org.junit.runner.RunWith
 import java.util.ArrayDeque
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.io.FileInputStream
 
 /** Local HTML in our own test Activity, never a payment app or external web site. */
 @RunWith(AndroidJUnit4::class)
@@ -112,13 +116,31 @@ class WechatWebReceiptScopeTest {
     }
 
     private fun withPage(labels: List<String>, nativeLabels: Boolean, html: String? = null, check: (AccessibilityNodeInfo) -> Unit) {
-        val automation = instrumentation.uiAutomation
+        val automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
         // Connect before constructing WebView so its provider observes accessibility enabled.
         val originalInfo = automation.serviceInfo
         // Match exactly the production service's single node-visibility flag; no all-window access.
         automation.serviceInfo = automation.serviceInfo.apply { flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS }
         val loaded = CountDownLatch(1)
+        val previousServices = shell(automation, "settings get secure enabled_accessibility_services")
+        val previousEnabled = shell(automation, "settings get secure accessibility_enabled")
         try {
+        // Chrome can report no accessibility services when only the hidden UiAutomation service exists.
+        // Enable the real, non-tool app service in this emulator; its package filter excludes our HTML.
+        val component = instrumentation.targetContext.packageName + "/" + LedgerAccessibilityService::class.java.name
+        val services = previousServices.takeUnless { it == "null" || it.isBlank() }?.split(':').orEmpty()
+        shell(automation, "settings put secure enabled_accessibility_services " + quote((services + component).distinct().joinToString(":")))
+        shell(automation, "settings put secure accessibility_enabled 1")
+        val manager = instrumentation.targetContext.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+        val enabledDeadline = SystemClock.uptimeMillis() + 10_000
+        while (SystemClock.uptimeMillis() < enabledDeadline &&
+            !manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK).any {
+                it.resolveInfo.serviceInfo.name == LedgerAccessibilityService::class.java.name
+            }) SystemClock.sleep(100)
+        assertTrue("The emulator must expose our actual service before WebView initialization",
+            manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK).any {
+                it.resolveInfo.serviceInfo.name == LedgerAccessibilityService::class.java.name
+            })
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             var page: WebView? = null
             try {
@@ -144,7 +166,7 @@ class WechatWebReceiptScopeTest {
             while (SystemClock.uptimeMillis() < deadline) {
                 // A new Activity/WebView must not reuse the preceding fixture's cached virtual tree.
                 if (Build.VERSION.SDK_INT >= 33) automation.clearCache()
-                val root = instrumentation.uiAutomation.rootInActiveWindow
+                val root = automation.rootInActiveWindow
                 if (root != null) {
                     try {
                         if (hasFictionalSentinel(root)) { check(root); return }
@@ -163,7 +185,22 @@ class WechatWebReceiptScopeTest {
                 }
             }
         }
-        } finally { automation.serviceInfo = originalInfo }
+        } finally {
+            restore(automation, "enabled_accessibility_services", previousServices)
+            restore(automation, "accessibility_enabled", previousEnabled)
+            automation.serviceInfo = originalInfo
+            // Restore the ordinary test connection, including its normal service suppression.
+            instrumentation.uiAutomation
+        }
+    }
+
+    private fun quote(value: String) = "'" + value.replace("'", "'\\''") + "'"
+    private fun shell(automation: UiAutomation, command: String) = automation.executeShellCommand(command).use { descriptor ->
+        FileInputStream(descriptor.fileDescriptor).bufferedReader().use { it.readText().trim() }
+    }
+    private fun restore(automation: UiAutomation, name: String, previous: String) {
+        shell(automation, if (previous == "null") "settings delete secure $name"
+            else "settings put secure $name " + quote(previous))
     }
 
     /** Test-only traversal of our own fictional HTML; find-by-text is not implemented by every provider. */
