@@ -4,13 +4,13 @@
 
 ## 当前进度
 
-第二阶段识别小样 `0.2.0-prototype` 代码已实现：本地交易识别、持久去重、待核对、手动补记与修改、删除撤销、权限状态及诊断。JVM 46 项、Python 8 项测试、Lint 及本地固定签名 APK 审计已通过；API 26/35 模拟器验收仍有一项日期断言正在修正，尚未全部通过。最终验证、CI 和发布结果确认后更新下载链接；**当前下方附件仍是第一阶段安装预览，不含自动记账功能**。详见 [第二阶段记录](docs/PHASE2_STATUS.md) 和 [手机权限与测试步骤](docs/PHASE2_TESTING.md)。
+第二阶段识别小样 `0.2.0-prototype` 已实现本地交易识别、Room 保存、持久去重、待核对、手动补记与修改、删除撤销、权限状态及诊断。最终源码 CI 的 JVM 46 项、Python 8 项、Lint，以及 API 26/35 模拟器各 27 项测试均通过。固定私密签名的实际 release APK 另已完成安装包审计、API 35 的 27 项测试及同签名更高版本覆盖安装验证。
 
-第一阶段的云端构建、Lint、实际 APK 审计，以及 Android 15 模拟器启动和三个页面导航测试已通过（2 项测试，0 失败）。[安装预览版已发布](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/preview-38843855896-1)，用户已反馈在一加 Ace 5 安装、启动正常，具体系统版本与其他细项待补充。
+**[第二阶段 APK：本地账本 0.2.0-prototype](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.0/auto-ledger-prototype.apk)**，约 7.1 MB，最低 Android 8.0；[发布页](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.0)。正式签名 APK 已发布，可直接用手机下载。完整校验值、签名边界与证据见 [第二阶段记录](docs/PHASE2_STATUS.md)，手机操作见 [权限与测试步骤](docs/PHASE2_TESTING.md)。
 
-**[下载 APK：本地账本·预览 0.1.0-preview](https://github.com/xiaochuan45/auto-ledger-android/releases/download/preview-38843855896-1/auto-ledger-preview.apk)**，约 9.3 MB，最低 Android 8.0。安装方法、签名限制和校验值见 [云端编译与手机安装](docs/BUILD_AND_INSTALL.md)。
+本版与第一阶段 `.preview` 应用并列安装。第二阶段的安装、权限、扫码、被扫码、网购、免密、后台扣费及后台运行均待用户手机实测；模拟器没有真实付款应用，不证明支付链路可用。当前缺少完整分类规则、周期统计、退款关联、账单导入导出及加密备份，请保留其他账目来源，不作为唯一账本。
 
-上面的 `0.1.0-preview` APK 是**安装验证版**，不读取通知或页面，不保存真实账单，没有自动识别、分类、退款或统计能力。第一阶段证据见 [第一阶段记录](docs/PHASE1_STATUS.md)；第二阶段小样及其支付识别尚未在用户手机实测。
+历史：[第一阶段安装预览](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/preview-38843855896-1) 仅验证安装与启动，用户已反馈在一加 Ace 5 正常；它没有自动记账功能，详见 [第一阶段记录](docs/PHASE1_STATUS.md)。
 
 ## 自动记账如何触发
 
@@ -23,7 +23,9 @@
 - [产品需求与验收约束](docs/REQUIREMENTS.md)：支付范围、准确性、退款、分类、统计及隐私要求。
 - [实施规划](docs/PLAN.md)：五个阶段、验收条件、初步时间和需要用户参与的节点。
 - [测试矩阵](docs/TEST_MATRIX.md)：自动化与真机测试范围、结果记录要求。
-- [云端编译与手机安装](docs/BUILD_AND_INSTALL.md)：编译流程、下载方式、签名限制和安装步骤。
+- [第二阶段记录](docs/PHASE2_STATUS.md)：本轮 APK、校验值、签名、自动化与真机状态。
+- [手机权限与测试步骤](docs/PHASE2_TESTING.md)：安装、启用、恢复和逐场景验证。
+- [云端编译与手机安装](docs/BUILD_AND_INSTALL.md)：第一阶段编译、下载及安装记录。
 - [第一阶段记录](docs/PHASE1_STATUS.md)：当前证据、限制及下一步。
 - [仓库协作约定](AGENTS.md)：后续开发应保持的账务、隐私和交付约束。
 

@@ -2,7 +2,21 @@
 
 版本 `0.2.0-prototype`，versionCode `2`，包名 `io.github.xiaochuan45.autoledger`。记录日期：2026-10-16。
 
-本阶段源代码已实现，JVM 46 项、Python 8 项测试、Lint 及本地固定签名 APK 审计已通过，系统矩阵和最终交付验证进行中。此文档只记录已有证据；没有用户手机测试证据的支付场景全部待验证。
+本阶段源代码已实现，最终源码 CI 及 API 26/35 模拟器矩阵均通过；固定签名的实际 release APK 另通过 API 35 测试及覆盖更新验证。Release 已公开发布，可直接下载。没有用户手机测试证据的支付场景全部待验证。
+
+## 本轮 APK
+
+| 项目 | 内容 |
+|---|---|
+| Release | [prototype-v0.2.0](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.0) |
+| 安装文件 | [auto-ledger-prototype.apk](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.0/auto-ledger-prototype.apk) |
+| 大小 | 7,122,330 bytes，约 6.79 MiB / 7.1 MB |
+| APK SHA-256 | `871b5e5d006d12d712c85493e76921744f7fc9a4044fae3f1ec3edaf8ddb9f32` |
+| 生产源码构建基线 | [`9c473e6169909d682a699c3f5e8537330dd7db1a`](https://github.com/xiaochuan45/auto-ledger-android/commit/9c473e6169909d682a699c3f5e8537330dd7db1a) |
+| 公开签名证书 SHA-256 | `0e2a128391be8ae3d39140ed5d2cd7de8256d62b19233b3593d9ef97180b0073` |
+| 正式 APK 审计 | [permissions-audit.md](evidence/0.2.0-prototype/permissions-audit.md)，release，`debuggable=false` |
+
+此 APK 在后续文档和测试脚本修改期间保持字节及校验值不变；已检查生产源码没有变化。下载时使用本表的 APK 哈希，不混用普通 CI 的 debug 或 unsigned release 构建。公开下载已验证：APK 和校验文件均返回 HTTP 200，APK 哈希与签名验证时一致。
 
 ## 实现范围
 
@@ -23,7 +37,7 @@
 
 ## 兼容与隐私边界
 
-目标是通用 Android 8.0 及以上，不绑定手机品牌。API 26/35 模拟器均已执行测试，但尚未全部通过，具体状态见下表；不能将模拟器推广为厂商系统或所有支付版本通过。用户手机上的第二阶段安装、权限、付款识别及后台运行均待实测。
+目标是通用 Android 8.0 及以上，不绑定手机品牌。源码测试矩阵在 API 26/35 模拟器各 27 项通过；实际签名 release APK 另通过 API 35 测试。不能将模拟器推广为厂商系统或所有支付版本通过。用户手机上的第二阶段安装、权限、付款识别及后台运行均待实测。
 
 仅两个付款应用进入过滤。为避免聊天冒充支付通知，会拒绝 conversation、MessagingStyle、people 等会话消息；这也可能漏掉微信实际使用会话形式发送的官方支付通知。无障碍使用精确付款 Activity 清单；通用聊天、Launcher 和网页页面不读取。类名、页面结构及通知格式需真实手机继续适配。
 
@@ -37,23 +51,26 @@
 
 私钥和口令仅保存在本次受管云端仓库外的私有目录，没有提交 GitHub、写入日志或附在发布包中。当前 GitHub 连接不支持 Secrets 管理，密钥尚未配置到 GitHub Secrets 或其他持久密钥服务；更换或删除云端环境前需要安全迁移和备份。当前方案只能在原密钥可用时继续同签名更新，不承诺密钥自动跨环境恢复。
 
-最终交付验证会对准确的签名 APK 执行仪器测试，并在两次独立测试之间真正 `adb install -r` 安装同签名更高版本，核对虚构账单及去重信息保留。这不代表未来数据库 schema 迁移已验证。
+最终交付的同一签名 APK 已在 API 35 模拟器执行 27 项仪器测试。覆盖更新验证另以 1 项测试写入虚构账单及去重信息，真正执行 `adb install -r` 从 versionCode 2 升到同签名 versionCode 3，再以 1 项测试确认数据保留。各项均通过，原交付 APK 哈希未变；这只验证当前数据库格式的数据保留，不代表未来数据库 schema 迁移已验证。
 
 ## 验证与下载
 
 | 验证项 | 当前结果 |
 |---|---|
 | 源代码 | 第二阶段小样已实现 |
+| 最终源码验证 | [run 38847932839](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38847932839) 成功，验证脚本提交 [`3523e70bc01c4770c99f407785b7acfe011c9c3e`](https://github.com/xiaochuan45/auto-ledger-android/commit/3523e70bc01c4770c99f407785b7acfe011c9c3e) |
 | JVM 测试 | 46 项通过 |
 | Python 测试 | 8 项通过 |
 | Android Lint | 通过 |
-| 本地固定签名 APK 审计 | 通过；最终发布附件证据另行补充 |
-| API 26 模拟器 | 已执行 27 项，同一非法日期断言有 1 项失败，尚未全部通过 |
-| API 35 模拟器 | 已执行 27 项，同一非法日期断言有 1 项失败，尚未全部通过 |
-| 日期断言修正 | 当前定位为测试以完整匹配查找完整日期字符串中的日期片段，正在修正匹配方式；修正后需重跑确认 |
-| 最终签名覆盖安装、CI 与 APK 发布 | 最终结果待补充 |
+| API 26 源码模拟器测试 | 27 项通过 |
+| API 35 源码模拟器测试 | 27 项通过 |
+| 正式固定签名 APK 审计 | 通过，见上方审计文件 |
+| 实际签名 release APK / API 35 | [run 38847326540](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38847326540) 成功，27 项通过 |
+| 同签名覆盖更新 | 在上述成功的签名验证中，写入数据 1 项、真实 versionCode 2 → 3 覆盖安装后校验 1 项均通过 |
+| 签名交付证据附件 | [artifact 12023792801](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38847326540/artifacts/12023792801)（GitHub 登录下载） |
+| APK 发布 | 已公开；APK 和校验文件下载均为 HTTP 200，下载后的 SHA-256 与被测签名包相同 |
 | 用户手机真机 | 第二阶段安装、权限、支付识别及后台运行全部待用户实测 |
 
-最终 APK 下载、源码提交、SHA-256、API 26/35 重跑与签名覆盖安装结果在完成后补充。README 当前已发布下载链接仍指向不含自动记账的第一阶段安装预览，不能作为第二阶段小样使用。当前尚不能将本阶段标为真机识别通过。
+**证据区分：**代码已实现；上述源码测试、模拟器、实际签名包审计及覆盖更新已通过；用户手机及真实支付全部待验证。生产源码与上表构建基线一致，交付 APK 哈希未变。没有导出与加密备份恢复前，请保留其他账目来源，不把小样作为唯一账本。
 
 用户测试步骤见 [PHASE2_TESTING.md](PHASE2_TESTING.md)。无需为测试专门消费，不上传完整真实账单或敏感原文。
