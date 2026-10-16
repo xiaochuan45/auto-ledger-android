@@ -157,14 +157,41 @@ def resource_name(value: str, resource_dump: str) -> str:
     raise ValueError(f"Could not resolve XML resource {value}")
 
 
-def packaged_xml(apk: Path, name: str, analyzer: str, output_dir: Path) -> ET.Element:
+def xml_resource_path(name: str, resource_dump: str) -> str:
+    """Resolve table entries, including AGP-shortened paths, without trusting ZIP names.
+
+    An APK may map xml/foo to res/aB.xml. The resource-table configuration, rather
+    than that file's directory, determines whether Android can select a different
+    value. Reject aliases, qualified overrides and duplicate table entries.
+    """
+    headers = list(re.finditer(
+        r"(?m)^[ \t]*resource[ \t]+0x[0-9a-fA-F]+[ \t]+(?:[\w.]+:)?xml/"
+        + re.escape(name) + r"(?:[ \t]+[A-Z_]+)*[ \t]*$", resource_dump,
+    ))
+    require(len(headers) == 1, f"Expected exactly one resource-table entry for xml/{name}")
+    block = resource_dump[headers[0].end():]
+    following = re.search(r"(?m)^[ \t]*(?:resource[ \t]+0x|type[ \t]+|Package[ \t]+)", block)
+    if following:
+        block = block[:following.start()]
+    values = [line.strip() for line in block.splitlines() if line.strip()]
+    require(len(values) == 1, f"Expected only one unqualified resource value for xml/{name}, got {values}")
+    value = re.fullmatch(r"\(\)[ \t]+\(file\)[ \t]+(\S+)[ \t]+type=XML", values[0])
+    require(value is not None, f"Expected an unqualified direct XML file for xml/{name}, got {values[0]}")
+    path = value.group(1)
+    require(path.startswith("res/") and path.endswith(".xml")
+            and all(part not in {"", ".", ".."} for part in path.split("/")),
+            f"Invalid packaged XML path for xml/{name}: {path}")
+    return path
+
+
+def packaged_xml(apk: Path, name: str, analyzer: str, resources: str, output_dir: Path) -> ET.Element:
+    path = xml_resource_path(name, resources)
     with zipfile.ZipFile(apk) as archive:
-        candidates = [entry for entry in archive.namelist()
-                      if re.fullmatch(r"res/xml(?:-[^/]+)?/" + re.escape(name) + r"\.xml", entry)]
-    require(candidates == [f"res/xml/{name}.xml"],
-            f"Expected one unqualified XML for {name}, got {candidates}")
-    xml_text = run(analyzer, "resources", "xml", "--file", "/" + candidates[0], str(apk))
+        require(archive.namelist().count(path) == 1,
+                f"Resource table must reference exactly one ZIP entry for xml/{name}: {path}")
+    xml_text = run(analyzer, "resources", "xml", "--file", "/" + path, str(apk))
     (output_dir / (name + ".xml")).write_text(xml_text, encoding="utf-8")
+    (output_dir / (name + ".packaged-path.txt")).write_text(path + "\n", encoding="utf-8")
     return ET.fromstring(xml_text)
 
 
@@ -179,12 +206,12 @@ def audit_exclusions(section: ET.Element | None, label: str) -> None:
 def audit_backup(apk: Path, app: ET.Element, analyzer: str, resources: str, output_dir: Path) -> None:
     old_rules = app.get(ANDROID + "fullBackupContent", "")
     if old_rules != "false":
-        old_root = packaged_xml(apk, resource_name(old_rules, resources), analyzer, output_dir)
+        old_root = packaged_xml(apk, resource_name(old_rules, resources), analyzer, resources, output_dir)
         require(old_root.tag == "full-backup-content", "Invalid legacy backup root")
         audit_exclusions(old_root, "legacy")
     new_rules = app.get(ANDROID + "dataExtractionRules", "")
     require(bool(new_rules), "Android 12+ data extraction rules must be declared")
-    new_root = packaged_xml(apk, resource_name(new_rules, resources), analyzer, output_dir)
+    new_root = packaged_xml(apk, resource_name(new_rules, resources), analyzer, resources, output_dir)
     require(new_root.tag == "data-extraction-rules", "Invalid data extraction root")
     audit_exclusions(new_root.find("cloud-backup"), "cloud-backup")
     audit_exclusions(new_root.find("device-transfer"), "device-transfer")
@@ -196,7 +223,7 @@ def audit_accessibility(apk: Path, service: ET.Element, analyzer: str,
     require(len(metadata) == 1, "Accessibility service needs exactly one configuration")
     item = metadata[0]
     require(item.get(ANDROID + "name") == "android.accessibilityservice", "Unexpected accessibility metadata")
-    config = packaged_xml(apk, resource_name(item.get(ANDROID + "resource", ""), resources), analyzer, output_dir)
+    config = packaged_xml(apk, resource_name(item.get(ANDROID + "resource", ""), resources), analyzer, resources, output_dir)
     require(config.tag == "accessibility-service", "Invalid accessibility configuration root")
     packages = {name.strip() for name in config.get(ANDROID + "packageNames", "").split(",") if name.strip()}
     require(packages == CAPTURE_PACKAGES, "Accessibility must only inspect WeChat and Alipay")
