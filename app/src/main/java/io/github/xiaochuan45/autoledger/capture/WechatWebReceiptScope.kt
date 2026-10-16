@@ -11,14 +11,15 @@ internal object WechatWebReceiptScope {
 
     private class Inspection {
         var native = 0; var web = 0; var texts = 0; var longTexts = 0; var nullPackages = 0; var mask = 0
-        var foreign = 0; var otherWindows = 0; var invisible = 0; var protected = 0
+        var foreign = 0; var otherWindows = 0; var invisible = 0; var protected = 0; var nativeReceipt = false
         fun snapshot(reason: WebReceiptRejection) = WebReceiptInspection(reason, native, web, texts, longTexts, nullPackages, mask,
-            foreign, otherWindows, invisible, protected)
+            foreign, otherWindows, invisible, protected, nativeReceipt)
     }
 
-    /** Caller keeps root; returned browser is separately owned. Rejecting never calls the body reader. */
+    /** Caller keeps root; returned receipt subtree is separately owned. Rejecting never calls the body reader. */
     @Suppress("DEPRECATION")
-    fun findReceiptRoot(root: AccessibilityNodeInfo, expectedPackage: String, windowId: Int): AccessibilityNodeInfo? {
+    fun findReceiptRoot(root: AccessibilityNodeInfo, expectedPackage: String, windowId: Int,
+        selectedMini: Boolean = false): AccessibilityNodeInfo? {
         val stats = Inspection()
         fun reject(reason: WebReceiptRejection): Nothing? {
             CaptureDiagnostics.webInspection(stats.snapshot(reason)); return null
@@ -26,8 +27,13 @@ internal object WechatWebReceiptScope {
         // Missing provider package names are accepted only below this verified app/window boundary.
         if (root.packageName?.toString() != expectedPackage || root.windowId != windowId) return reject(WebReceiptRejection.FOREIGN_ROOT)
         val queue = ArrayDeque<AccessibilityNodeInfo>()
-        queue.add(AccessibilityNodeInfo.obtain(root))
         var candidate: AccessibilityNodeInfo? = null
+        if (selectedMini) {
+            // User-selected mini detail: native and web fields may share this one verified window.
+            // Only compare fixed column prefixes here; all four are required before any body read.
+            stats.nativeReceipt = true
+            candidate = AccessibilityNodeInfo.obtain(root)
+        } else queue.add(AccessibilityNodeInfo.obtain(root))
         var keep = false
         try {
             while (queue.isNotEmpty()) {

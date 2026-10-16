@@ -24,10 +24,12 @@ data class WebReceiptInspection(
     val otherWindowNodes: Int = 0,
     val invisibleNodes: Int = 0,
     val protectedNodes: Int = 0,
+    val nativeReceipt: Boolean = false,
 ) {
     fun summary(): String = buildString {
         appendLine("最近网页检查：${reason.label}")
-        appendLine("原生节点 $nativeNodes；网页节点 $webNodes；有文字节点 $textNodes；长文字节点 $longTextNodes；缺包名节点 $nullPackageNodes")
+        appendLine("详情结构：${if (nativeReceipt) "主动选择的小程序窗口栏目" else "网页栏目"}")
+        appendLine("原生节点 $nativeNodes；详情节点 $webNodes；有文字节点 $textNodes；长文字节点 $longTextNodes；缺包名节点 $nullPackageNodes")
         appendLine("过滤：异包 $foreignNodes；窗口不符 $otherWindowNodes；不可见 $invisibleNodes；敏感控件 $protectedNodes")
         append("必要栏目：")
         append(WechatWebReceipt.requiredLabels.mapIndexed { index, label ->

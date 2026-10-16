@@ -5,6 +5,42 @@ import org.junit.Test
 
 /** Fictional layout and values only; never copied from a user's bill. */
 class WechatWebReceiptTest {
+    private fun merchantMini() = input(listOf("虚构商户", "喜欢", "虚构店铺介绍", "服务", "会员", "交易详情",
+        "虚构栏目一", "虚构栏目二", "虚构栏目三", "-42.70", "虚构商户", "当前状态支付成功",
+        "支付时间2025年3月12日 10:20:30", "支付方式零钱", "交易单号FICTIONAL-MINI-A"))
+        .copy(source = CaptureSource.USER_WEB_RECEIPT, screenClass = WechatWebReceipt.MINI_WINDOW)
+
+    @Test fun selectedMerchantMiniProfileHasExactAmountButNeverBecomesAnAutomaticEntry() {
+        val value = requireNotNull(PaymentParser.parse(merchantMini()))
+        assertEquals(4270L, value.amountMinor)
+        assertEquals(RecordStatus.REVIEW, value.status)
+        assertEquals(CaptureSource.WEB_RECEIPT, value.source)
+        assertEquals("FICTIONAL-MINI-A", value.transactionId)
+        assertEquals(TimeSource.PAYMENT, value.timeSource)
+        assertNull(value.merchant)
+        assertNull(value.platform)
+        assertNull(PaymentParser.parse(merchantMini().copy(source = CaptureSource.ACCESSIBILITY)))
+        assertNull(PaymentParser.parse(merchantMini().copy(screenClass = "com.tencent.mm.ui.LauncherUI")))
+        assertNull(PaymentParser.parse(merchantMini().copy(packageName = PaymentChannel.ALIPAY.packageName)))
+    }
+
+    @Test fun selectedMiniStillNeedsEveryColumnAndDoesNotTurnIncomeOrRemarkNumbersIntoExpense() {
+        val mini = merchantMini()
+        WechatWebReceipt.requiredLabels.forEach { label ->
+            assertNull(PaymentParser.parse(mini.copy(texts = mini.texts.filterNot { it.startsWith(label) })))
+        }
+        assertNull(PaymentParser.parse(mini.copy(texts = mini.texts.map { if (it == "-42.70") "+42.70" else it })))
+        val remarkOnly = requireNotNull(PaymentParser.parse(mini.copy(texts = mini.texts.filterNot { it == "-42.70" } + "备注：-42.70")))
+        assertNull(remarkOnly.amountMinor)
+        val multiple = requireNotNull(PaymentParser.parse(mini.copy(texts = listOf("-51.20") + mini.texts)))
+        assertNull(multiple.amountMinor)
+        assertEquals(RecordStatus.REVIEW, multiple.status)
+    }
+
+    @Test fun longMerchantHeaderExceptionDoesNotRelaxOrdinaryWebHeaderRules() {
+        val ordinary = merchantMini().copy(screenClass = WechatWebReceipt.WINDOW)
+        assertNull(requireNotNull(PaymentParser.parse(ordinary)).amountMinor)
+    }
     private fun receipt(amount: String = "-42.70", state: String = "支付成功", id: String = "FICTIONAL-WEB-TRADE-A") =
         listOf("虚构青禾商店", amount, "当前状态", state, "支付时间", "2025年3月12日 10:20:30",
             "支付方式", "零钱", "交易单号", id, "商户单号", "FICTIONAL-MERCHANT-ORDER-A",

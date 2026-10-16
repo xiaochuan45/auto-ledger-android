@@ -19,7 +19,7 @@ enum class CaptureSkip(val label: String) {
     WINDOW_UNSUPPORTED("页面类型尚不支持，未读取页面"), WINDOW_UNVERIFIED("没有已验证的付款窗口"),
     ROOT_UNAVAILABLE("系统未提供当前付款窗口"), WINDOW_CHANGED("当前窗口已变化"),
     WINDOW_ID_MISSING("系统窗口标识不可用"),
-    WEB_RECEIPT_SCOPE("微信网页未满足完整账单栏目，未进行字段识别"),
+    WEB_RECEIPT_SCOPE("微信详情未满足必要交易栏目，未进行字段识别"),
     WEB_FIELDS_UNAVAILABLE("已尝试读取，但没有完整可识别的账单字段"),
     PARSER_REJECTED("已读取输入，但没有可识别的交易证据"),
     COMPATIBILITY_ONLY("只读兼容性检查中，未读取付款内容或入账"),
@@ -57,6 +57,7 @@ object CaptureDiagnostics {
     fun cancelOneShotWechatReceipt() = oneShot.cancel()
     fun oneShotSnapshot() = oneShot.snapshot()
     internal fun takeOneShotWechatReceipt(channel: PaymentChannel, screenClass: String) = oneShot.consume(channel, screenClass)
+    internal fun noteOneShotWindow(channel: PaymentChannel, screenClass: String) = oneShot.window(channel, screenClass)
     fun stopCompatibilityCheck() = compatibility.stop()
     fun clearCompatibilityCheck() { oneShot.cancel(); compatibility.clear() }
     fun compatibilitySnapshot(): CompatibilitySnapshot = compatibility.snapshot()
@@ -68,8 +69,9 @@ object CaptureDiagnostics {
             appendLine("本地账本 $appVersion / Android API $sdk")
             appendLine("兼容性检查：${if (probe.active) "进行中，暂停自动记录" else "未运行"}")
             appendLine("一次微信读取：${oneShot.snapshot().state.label}；本进程尝试 ${oneShot.snapshot().attempts} 次")
+            appendLine("本次一次读取期间入口（仅程序标识）：${oneShot.snapshot().windowTypes.joinToString("、").ifEmpty { "无" }}")
             appendLine("已选渠道窗口事件：${current.windowEvents}；支持窗口：${current.supportedWindowEvents}")
-            appendLine("微信网页账单结构命中：${current.webReceiptMatches}（仍需核对来源）")
+            appendLine("微信详情结构命中：${current.webReceiptMatches}（仍需核对来源）")
             current.webInspection?.let { appendLine(it.summary()) }
             appendLine("已选渠道通知事件：${current.notificationEvents}")
             appendLine("进入解析：${current.observedCount}；完成处理：${current.parsedCount}")

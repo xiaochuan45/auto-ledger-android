@@ -38,14 +38,16 @@ object PaymentParser {
         if (!CapturePolicy.accepts(input)) return null
         if (input.texts.size > 160 || input.texts.sumOf { it.length } > 16_384) return null
         val channel = PaymentChannel.fromPackage(input.packageName) ?: return null
-        val webInput = input.source in setOf(CaptureSource.ACCESSIBILITY, CaptureSource.USER_WEB_RECEIPT) && WechatWebReceipt.isCandidate(channel, input.screenClass)
+        val webInput = (input.source == CaptureSource.ACCESSIBILITY && WechatWebReceipt.isCandidate(channel, input.screenClass)) ||
+            (input.source == CaptureSource.USER_WEB_RECEIPT && WechatWebReceipt.isExplicitCandidate(channel, input.screenClass))
         val pieces = input.texts.map(::normalize).map { if (webInput) WechatWebReceipt.normalizeRows(it) else it }
             .filter(String::isNotBlank).distinct()
         val body = pieces.filterNot { it == input.title?.trim() }.joinToString("\n")
         val text = (listOfNotNull(input.title?.let(::normalize)) + body).joinToString("\n")
         if (sensitive.containsMatchIn(text)) return null
         val webReceipt = webInput
-        val webHeader = if (webReceipt) WechatWebReceipt.headerAmounts(body) else emptyList()
+        val webHeader = if (webReceipt) WechatWebReceipt.headerAmounts(body,
+            merchantPage = WechatWebReceipt.isMiniCandidate(channel, input.screenClass)) else emptyList()
         // An income header must never turn into an expense by dropping its sign.
         if (webHeader.any { it.startsWith("+") }) return null
         val kind = when {

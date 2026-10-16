@@ -287,7 +287,7 @@ private fun RecordDetail(record: LedgerRecord, duplicate: LedgerRecord?, onDismi
                 DetailLine("支付渠道", channelLabel(record.channel))
                 DetailLine("消费分类", record.category)
                 DetailLine("备注", record.note.ifBlank { "无" })
-                DetailLine("来源", record.sourceTypes.split(',').joinToString("、") { when (it.trim()) { "NOTIFICATION" -> "交易通知"; "ACCESSIBILITY" -> "付款页面"; "WEB_RECEIPT" -> "网页账单（来源待核对）"; "MANUAL" -> "手动补记"; else -> "其他" } })
+                DetailLine("来源", record.sourceTypes.split(',').joinToString("、") { when (it.trim()) { "NOTIFICATION" -> "交易通知"; "ACCESSIBILITY" -> "付款页面"; "WEB_RECEIPT" -> "微信详情（来源待核对）"; "MANUAL" -> "手动补记"; else -> "其他" } })
                 record.transactionId?.let { DetailLine("交易标识", it) }
                 if (record.status == RecordStatus.REVIEW.name) {
                     HorizontalDivider()
@@ -399,15 +399,16 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
             Text("不同品牌手机可在系统应用管理中检查电池使用、允许后台活动等选项，名称随品牌和系统版本变化。若服务断开，检查开关或在系统设置中重新启用。", style = MaterialTheme.typography.bodySmall)
         }
         SettingsCard("已有微信账单读取一次") {
-            Text("点击后30秒内，退出微信付款详情再重新打开它。只尝试读取这一个微信网页窗口的可见文字；不截图，结果仅待核对。页面没有提供文字时仍无法识别。", style = MaterialTheme.typography.bodySmall)
+            Text("点击后30秒内，退出微信付款详情再重新打开它。支持微信网页和小程序交易详情；小程序需先匹配必要交易栏目。只读取一次，不截图，结果仅待核对。页面没有提供文字时仍无法识别。", style = MaterialTheme.typography.bodySmall)
             Text(oneShot.state.label, modifier = Modifier.testTag("one_shot_status"))
+            Text("本次请求观察到的入口：${oneShot.windowTypes.joinToString("、").ifEmpty { "无" }}", style = MaterialTheme.typography.bodySmall)
             OutlinedButton(onClick = { CaptureDiagnostics.requestOneShotWechatReceipt(); refreshCount++ },
                 enabled = settings.enabled && settings.wechatEnabled && permissions.accessibilityConnected && !compatibility.active,
                 modifier = Modifier.fillMaxWidth().testTag("request_one_shot_wechat")) { Text("读取一次已有微信账单") }
             Text("先结束只读检查，并保持总开关、微信渠道和无障碍服务开启。一次尝试、超时、服务断开或关闭开关后请求结束，不会持续读取网页。", style = MaterialTheme.typography.bodySmall)
         }
         SettingsCard("本次运行诊断") {
-            Text("微信网页账单结构命中 ${diagnostics.webReceiptMatches} 次（结果仍需核对来源）", style = MaterialTheme.typography.bodyMedium)
+            Text("微信详情结构命中 ${diagnostics.webReceiptMatches} 次（结果仍需核对来源）", style = MaterialTheme.typography.bodyMedium)
             diagnostics.webInspection?.let { Text(it.summary(), style = MaterialTheme.typography.bodySmall) }
             Text("已选渠道窗口事件 ${diagnostics.windowEvents} 次（支持类型 ${diagnostics.supportedWindowEvents} 次）\n已选渠道通知事件 ${diagnostics.notificationEvents} 次\n进入解析 ${diagnostics.observedCount} 次\n处理完成 ${diagnostics.parsedCount} 次（含重复检查）\n筛选跳过 ${diagnostics.skippedCount} 次\n异常 ${diagnostics.failureCount} 次", style = MaterialTheme.typography.bodyMedium)
             Text("事件不是付款笔数；进入解析才表示已通过前面的筛选。普通页面、会话通知等可能被跳过。零事件也可能来自进程重启或系统没有提供信息。", style = MaterialTheme.typography.bodySmall)

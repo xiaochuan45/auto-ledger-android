@@ -30,11 +30,64 @@ import java.util.ArrayDeque
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import android.os.ParcelFileDescriptor
+import androidx.room.Room
+import io.github.xiaochuan45.autoledger.data.LedgerDatabase
+import io.github.xiaochuan45.autoledger.data.LedgerRepository
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 
 /** Local HTML in our own test Activity, never a payment app or external web site. */
 @RunWith(AndroidJUnit4::class)
 class WechatWebReceiptScopeTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
+
+    @Test fun selectedNativeMerchantDetailFlowsThroughWindowGateScopeParserAndPersistentDedup() {
+        val profile = listOf("虚构商户", "喜欢", "虚构店铺介绍", "服务", "会员", "交易详情",
+            "虚构栏目一", "虚构栏目二", "虚构栏目三", "-42.70", "虚构商户").joinToString("\n")
+        val rows = listOf(profile, "当前状态支付成功", "支付时间2025年3月12日 10:20:30",
+            "支付方式零钱", "交易单号FICTIONAL-NATIVE-MINI-A")
+        withPage(emptyList(), false, nativeRows = rows, nativeOnly = true) { root ->
+            val request = OneShotWechatReceipt { 100L }.apply { arm() }
+            val gate = PaymentWindowGate { "fictional-selected-mini" }
+            assertNull(gate.event(PaymentChannel.WECHAT, WechatWebReceipt.MINI_WINDOW, root.windowId, true, 100, true))
+            assertNull(gate.event(PaymentChannel.WECHAT, "android.widget.FrameLayout", root.windowId, true, 110, true))
+            val session = requireNotNull(gate.session)
+            assertTrue(request.consume(session.channel, session.screenClass))
+            assertFalse(request.consume(session.channel, session.screenClass))
+            val selected = WechatWebReceiptScope.findReceiptRoot(root, instrumentation.targetContext.packageName,
+                root.windowId, selectedMini = session.explicitOnly)
+            assertNotNull("Four native columns must be required before the body reader runs", selected)
+            val pieces = requireNotNull(PaymentTextReader.read(requireNotNull(selected), instrumentation.targetContext.packageName, true))
+            val parsed = requireNotNull(PaymentParser.parse(CaptureInput(CaptureSource.USER_WEB_RECEIPT,
+                PaymentChannel.WECHAT.packageName, pieces, 1_800_000_000_000L, session.token, screenClass = session.screenClass)))
+            assertEquals("Fictional native fragments: $pieces", 4270L, parsed.amountMinor)
+            assertEquals(TimeSource.PAYMENT, parsed.timeSource)
+            assertEquals(RecordStatus.REVIEW, parsed.status)
+            val database = Room.inMemoryDatabaseBuilder(instrumentation.targetContext, LedgerDatabase::class.java).build()
+            try {
+                runBlocking {
+                    val repository = LedgerRepository(database)
+                    val first = repository.ingest(parsed)
+                    val replay = repository.ingest(parsed.copy(captureKey = "fictional-mini-reopen"))
+                    assertEquals(first.recordId, replay.recordId)
+                    assertEquals(1, repository.records.first().size)
+                    assertEquals(RecordStatus.REVIEW.name, repository.getRecord(first.recordId)!!.status)
+                }
+            } finally { database.close() }
+        }
+    }
+
+    @Test fun selectedMiniWithOrdinaryOrPartialFieldsIsRejectedBeforeAnyBodyRead() {
+        withPage(emptyList(), false, nativeRows = listOf("虚构普通小程序", "当前状态支付成功", "支付时间2025年3月12日 10:20:30"),
+            nativeOnly = true) { root ->
+            assertNull(WechatWebReceiptScope.findReceiptRoot(root, instrumentation.targetContext.packageName,
+                root.windowId, selectedMini = true))
+            val result = requireNotNull(CaptureDiagnostics.snapshot().webInspection)
+            assertTrue(result.nativeReceipt)
+            assertEquals(WebReceiptRejection.MISSING_LABELS, result.reason)
+            assertEquals(3, result.labelMask)
+        }
+    }
 
     @Test fun completeLabelsInOneWebViewAreScopedWithoutReadingNativeChrome() {
         withPage(WechatWebReceipt.labels, false) { root ->
@@ -116,7 +169,8 @@ class WechatWebReceiptScopeTest {
         assertTrue(WechatWebReceipt.hasLabelPrefix(labelOnly, "当前状态"))
     }
 
-    private fun withPage(labels: List<String>, nativeLabels: Boolean, html: String? = null, check: (AccessibilityNodeInfo) -> Unit) {
+    private fun withPage(labels: List<String>, nativeLabels: Boolean, html: String? = null,
+        nativeRows: List<String> = emptyList(), nativeOnly: Boolean = false, check: (AccessibilityNodeInfo) -> Unit) {
         val automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
         // Connect before constructing WebView so its provider observes accessibility enabled.
         val originalInfo = automation.serviceInfo
@@ -149,6 +203,13 @@ class WechatWebReceiptScopeTest {
                 val layout = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
                 if (nativeLabels) WechatWebReceipt.labels.forEach { label ->
                     layout.addView(TextView(activity).apply { text = label })
+                }
+                nativeRows.forEach { value -> layout.addView(TextView(activity).apply { text = value }) }
+                if (nativeOnly) {
+                    layout.addView(TextView(activity).apply { text = "FICTIONAL_SCOPE_READY" })
+                    activity.setContentView(layout)
+                    loaded.countDown()
+                    return@onActivity
                 }
                 val web = WebView(activity)
                 page = web

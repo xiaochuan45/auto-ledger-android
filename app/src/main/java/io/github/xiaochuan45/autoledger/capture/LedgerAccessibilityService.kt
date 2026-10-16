@@ -11,15 +11,14 @@ import io.github.xiaochuan45.autoledger.core.CaptureInput
 import io.github.xiaochuan45.autoledger.core.CapturePolicy
 import io.github.xiaochuan45.autoledger.core.CaptureSource
 import io.github.xiaochuan45.autoledger.core.PaymentChannel
-import io.github.xiaochuan45.autoledger.core.WechatWebReceipt
-import java.util.UUID
 
 class LedgerAccessibilityService : AccessibilityService() {
     private lateinit var preferences: CapturePreferences
     private lateinit var dispatcher: CaptureDispatcher
     private var settingsObserver: AutoCloseable? = null
     private val handler = Handler(Looper.getMainLooper())
-    private var session: PaymentWindowSession? = null
+    private val windows = PaymentWindowGate()
+    private val session get() = windows.session
     private var scheduledRead: Runnable? = null
     private var lastReadElapsed = 0L
 
@@ -52,53 +51,34 @@ class LedgerAccessibilityService : AccessibilityService() {
         val className = event.className?.toString().orEmpty()
         val nowElapsed = SystemClock.elapsedRealtime()
         val trustedClass = CapturePolicy.isPaymentWindow(channel, className)
-        val webCandidate = WechatWebReceipt.isCandidate(channel, className)
         val stateChanged = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         CaptureDiagnostics.windowEvent(channel, className, stateChanged && trustedClass, recordType = stateChanged)
+        CaptureDiagnostics.noteOneShotWindow(channel, className)
         if (CaptureDiagnostics.compatibilityActive()) {
             clearWindow()
             CaptureDiagnostics.skipped(CaptureSkip.COMPATIBILITY_ONLY, CaptureSource.ACCESSIBILITY)
             return
         }
-        if (event.windowId < 0) {
-            clearWindow()
-            CaptureDiagnostics.skipped(CaptureSkip.WINDOW_ID_MISSING, CaptureSource.ACCESSIBILITY)
+        val previousToken = session?.token
+        val reason = windows.event(channel, className, event.windowId, stateChanged, nowElapsed,
+            explicitReady = CaptureDiagnostics.oneShotSnapshot().state == OneShotState.WAITING)
+        if (reason != null) {
+            if (session == null) clearWindow()
+            CaptureDiagnostics.skipped(reason, CaptureSource.ACCESSIBILITY)
             return
         }
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            // Entering any unsupported page/dialog invalidates a previously verified payment window.
-            if (!trustedClass && !webCandidate) {
-                clearWindow()
-                CaptureDiagnostics.skipped(CaptureSkip.WINDOW_UNSUPPORTED, CaptureSource.ACCESSIBILITY)
-                return
-            }
-            val current = session
-            if (current == null || current.channel != channel || current.windowId != event.windowId ||
-                current.screenClass != className || nowElapsed - current.verifiedAtElapsed > SESSION_VALIDITY_MS
-            ) {
-                clearWindow()
-                session = PaymentWindowSession(channel, className, event.windowId,
-                    UUID.randomUUID().toString(), nowElapsed)
-            } else {
-                session = current.copy(verifiedAtElapsed = nowElapsed)
-            }
-        } else {
-            val current = session ?: run {
-                CaptureDiagnostics.skipped(CaptureSkip.WINDOW_UNVERIFIED, CaptureSource.ACCESSIBILITY)
-                return
-            }
-            if (current.channel != channel || current.windowId != event.windowId ||
-                nowElapsed - current.verifiedAtElapsed > SESSION_VALIDITY_MS
-            ) { clearWindow(); return }
-            // Content event classes are usually TextView/FrameLayout. They cannot establish trust.
-            if ((trustedClass || webCandidate) && className != current.screenClass) { clearWindow(); return }
+        if (previousToken != session?.token) {
+            scheduledRead?.let(handler::removeCallbacks)
+            scheduledRead = null
+            lastReadElapsed = 0
         }
 
         val current = session ?: return
         val intervalDelay = (MIN_READ_INTERVAL_MS - (nowElapsed - lastReadElapsed)).coerceAtLeast(0)
         // An asynchronous receipt must finish painting before either automatic or explicit one-time reading.
-        // Content events reschedule this same task; there is no polling or repeated screenshot/text capture.
-        val webDelay = if (WechatWebReceipt.isCandidate(current.channel, current.screenClass))
+        // A stream of content events must not postpone this same request forever. No polling is used.
+        if (scheduledRead != null) return
+        val webDelay = if (current.explicitOnly) 1_500L else if (current.receipt)
             maxOf(500L, 750L - (nowElapsed - current.verifiedAtElapsed)) else 0L
         val remainingDelay = maxOf(intervalDelay, webDelay)
         scheduledRead?.let(handler::removeCallbacks)
@@ -113,7 +93,8 @@ class LedgerAccessibilityService : AccessibilityService() {
     private fun readVerifiedWindow(expected: PaymentWindowSession) {
         if (CaptureDiagnostics.compatibilityActive()) { clearWindow(); return }
         if (!preferences.isCaptureEnabled(expected.channel) ||
-            SystemClock.elapsedRealtime() - expected.verifiedAtElapsed > SESSION_VALIDITY_MS
+            SystemClock.elapsedRealtime() - expected.verifiedAtElapsed !in 0..PaymentWindowGate.VALIDITY_MS ||
+            (expected.explicitOnly && CaptureDiagnostics.oneShotSnapshot().state != OneShotState.WAITING)
         ) { clearWindow(); return }
         lastReadElapsed = SystemClock.elapsedRealtime()
         try {
@@ -134,12 +115,14 @@ class LedgerAccessibilityService : AccessibilityService() {
                 CaptureDiagnostics.skipped(CaptureSkip.WINDOW_CHANGED, CaptureSource.ACCESSIBILITY)
                 return
             }
-            val webReceipt = WechatWebReceipt.isCandidate(expected.channel, expected.screenClass)
+            val webReceipt = expected.receipt
             val requested = webReceipt && CaptureDiagnostics.takeOneShotWechatReceipt(expected.channel, expected.screenClass)
+            if (expected.explicitOnly && !requested) { releaseNode(root); clearWindow(); return }
             val scopedRoot = if (webReceipt) {
-                val matched = try { WechatWebReceiptScope.findReceiptRoot(root, expected.channel.packageName, expected.windowId) }
+                val matched = try { WechatWebReceiptScope.findReceiptRoot(root, expected.channel.packageName, expected.windowId,
+                    selectedMini = expected.explicitOnly) }
                     catch (failure: RuntimeException) { releaseNode(root); throw failure }
-                if (matched == null && !requested) {
+                if (matched == null && (!requested || expected.explicitOnly)) {
                     releaseNode(root)
                     CaptureDiagnostics.skipped(CaptureSkip.WEB_RECEIPT_SCOPE, CaptureSource.ACCESSIBILITY)
                     return
@@ -166,13 +149,15 @@ class LedgerAccessibilityService : AccessibilityService() {
         } catch (_: RuntimeException) {
             CaptureDiagnostics.failed(CaptureFailure.ACCESSIBILITY_READ)
             clearWindow()
+        } finally {
+            if (expected.explicitOnly) clearWindow()
         }
     }
 
     private fun clearWindow() {
         scheduledRead?.let(handler::removeCallbacks)
         scheduledRead = null
-        session = null
+        windows.clear()
         lastReadElapsed = 0
     }
 
@@ -200,17 +185,8 @@ class LedgerAccessibilityService : AccessibilityService() {
         super.onDestroy()
     }
 
-    private data class PaymentWindowSession(
-        val channel: PaymentChannel,
-        val screenClass: String,
-        val windowId: Int,
-        val token: String,
-        val verifiedAtElapsed: Long,
-    )
-
     private companion object {
         const val MIN_READ_INTERVAL_MS = 600L
-        const val SESSION_VALIDITY_MS = 45_000L
         @Suppress("DEPRECATION")
         fun releaseNode(node: AccessibilityNodeInfo) { node.recycle() }
     }
