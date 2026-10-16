@@ -1,6 +1,6 @@
 package io.github.xiaochuan45.autoledger.core
 
-enum class CaptureSource { NOTIFICATION, ACCESSIBILITY, MANUAL, WEB_RECEIPT }
+enum class CaptureSource { NOTIFICATION, ACCESSIBILITY, MANUAL, WEB_RECEIPT, USER_WEB_RECEIPT }
 enum class PaymentChannel(val label: String, val packageName: String) {
     WECHAT("微信", "com.tencent.mm"),
     ALIPAY("支付宝", "com.eg.android.AlipayGphone");

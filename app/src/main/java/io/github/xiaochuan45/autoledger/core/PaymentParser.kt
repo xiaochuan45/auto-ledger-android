@@ -38,12 +38,13 @@ object PaymentParser {
         if (!CapturePolicy.accepts(input)) return null
         if (input.texts.size > 160 || input.texts.sumOf { it.length } > 16_384) return null
         val channel = PaymentChannel.fromPackage(input.packageName) ?: return null
-        val pieces = input.texts.map(::normalize).filter(String::isNotBlank).distinct()
+        val webInput = input.source in setOf(CaptureSource.ACCESSIBILITY, CaptureSource.USER_WEB_RECEIPT) && WechatWebReceipt.isCandidate(channel, input.screenClass)
+        val pieces = input.texts.map(::normalize).map { if (webInput) WechatWebReceipt.normalizeRows(it) else it }
+            .filter(String::isNotBlank).distinct()
         val body = pieces.filterNot { it == input.title?.trim() }.joinToString("\n")
         val text = (listOfNotNull(input.title?.let(::normalize)) + body).joinToString("\n")
         if (sensitive.containsMatchIn(text)) return null
-        val webReceipt = input.source == CaptureSource.ACCESSIBILITY &&
-            WechatWebReceipt.isCandidate(channel, input.screenClass)
+        val webReceipt = webInput
         val webHeader = if (webReceipt) WechatWebReceipt.headerAmounts(body) else emptyList()
         // An income header must never turn into an expense by dropping its sign.
         if (webHeader.any { it.startsWith("+") }) return null
@@ -98,7 +99,7 @@ object PaymentParser {
         val paymentTime = timeMatches.singleOrNull()?.let(::parseTime)
         if (timeMatches.size > 1) reasons += "读到多个付款时间，无法确定实际付款时间"
         if (timeMatches.size == 1 && paymentTime == null) reasons += "付款时间格式、日期或本地时区不明确，请核对"
-        if (input.source == CaptureSource.ACCESSIBILITY && transactionId == null && paymentTime == null) {
+        if ((input.source == CaptureSource.ACCESSIBILITY || webReceipt) && transactionId == null && paymentTime == null) {
             reasons += "缺少交易单号和付款时间，无法区分历史页面与新付款"
         }
         val status = if (reasons.isEmpty()) RecordStatus.CONFIRMED else RecordStatus.REVIEW

@@ -31,6 +31,15 @@ class CapturePrivacyTest {
         CaptureDiagnostics.clearCompatibilityCheck()
     }
 
+    @Test fun enteringReadOnlyModeCancelsOneTimeTextReadWithoutRetainingFields() {
+        CaptureDiagnostics.requestOneShotWechatReceipt()
+        assertEquals(OneShotState.WAITING, CaptureDiagnostics.oneShotSnapshot().state)
+        CaptureDiagnostics.startCompatibilityCheck()
+        assertEquals(OneShotState.CANCELLED, CaptureDiagnostics.oneShotSnapshot().state)
+        assertFalse(CaptureDiagnostics.takeOneShotWechatReceipt(PaymentChannel.WECHAT,
+            io.github.xiaochuan45.autoledger.core.WechatWebReceipt.WINDOW))
+    }
+
     @Test fun compatibilityCheckRejectsNotificationBeforeReadingItsBody() {
         val notification = fictionalNotification("微信支付")
         notification.extras.putCharSequence(Notification.EXTRA_TEXT, object : CharSequence {

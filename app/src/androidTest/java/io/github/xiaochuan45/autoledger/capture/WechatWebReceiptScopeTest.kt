@@ -1,6 +1,7 @@
 package io.github.xiaochuan45.autoledger.capture
 
 import android.os.SystemClock
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.view.accessibility.AccessibilityNodeInfo
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -11,6 +12,12 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.xiaochuan45.autoledger.MainActivity
 import io.github.xiaochuan45.autoledger.core.WechatWebReceipt
+import io.github.xiaochuan45.autoledger.core.CaptureInput
+import io.github.xiaochuan45.autoledger.core.CaptureSource
+import io.github.xiaochuan45.autoledger.core.PaymentChannel
+import io.github.xiaochuan45.autoledger.core.PaymentParser
+import io.github.xiaochuan45.autoledger.core.RecordStatus
+import io.github.xiaochuan45.autoledger.core.TimeSource
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -40,6 +47,49 @@ class WechatWebReceiptScopeTest {
         }
     }
 
+    @Test fun mergedRowsAndNestedHeaderPassScopeReaderAndParserInDocumentOrder() {
+        val html = "<section><div><div><strong>虚构商店</strong><p>-42.70</p></div></div></section>" +
+            "<p>当前状态支付成功</p><p>支付时间2025年3月12日 10:20:30</p>" +
+            "<p>支付方式零钱</p><p>交易单号FICTIONAL-DOM-MERGED-A</p>"
+        withPage(emptyList(), false, html) { root ->
+            val web = WechatWebReceiptScope.findReceiptRoot(root, instrumentation.targetContext.packageName, root.windowId)
+            assertNotNull("Merged rows without optional footer must be a candidate", web)
+            val pieces = PaymentTextReader.read(requireNotNull(web), instrumentation.targetContext.packageName, true)
+            val value = PaymentParser.parse(CaptureInput(CaptureSource.ACCESSIBILITY, PaymentChannel.WECHAT.packageName,
+                requireNotNull(pieces), 1_800_000_000_000L, "fictional-local-dom", screenClass = WechatWebReceipt.WINDOW))
+            assertNotNull(value)
+            assertEquals(4270L, value!!.amountMinor)
+            assertEquals("FICTIONAL-DOM-MERGED-A", value.transactionId)
+            assertEquals(TimeSource.PAYMENT, value.timeSource)
+            assertEquals(RecordStatus.REVIEW, value.status)
+        }
+    }
+
+    @Test fun repeatedParentLabelDoesNotLookLikeMultipleReceipts() {
+        val html = "<div role='group' aria-label='当前状态'><p>当前状态</p><p>支付成功</p></div>" +
+            "<p>支付时间2025年3月12日 10:20:30</p><p>支付方式零钱</p><p>交易单号FICTIONAL-DOM-DUPLICATE-A</p>"
+        withPage(emptyList(), false, html) { root ->
+            val web = WechatWebReceiptScope.findReceiptRoot(root, instrumentation.targetContext.packageName, root.windowId)
+            assertNotNull(web)
+            if (web != null) release(web)
+            assertEquals(WebReceiptRejection.MATCHED, CaptureDiagnostics.snapshot().webInspection?.reason)
+        }
+    }
+
+    @Test fun scopeFailureSummaryOnlyContainsFixedLabelsAndCounts() {
+        withPage(listOf("虚构不应保留的页面内容", "当前状态 支付成功"), false) { root ->
+            assertNull(WechatWebReceiptScope.findReceiptRoot(root, instrumentation.targetContext.packageName, root.windowId))
+            val status = requireNotNull(CaptureDiagnostics.snapshot().webInspection)
+            assertEquals(WebReceiptRejection.MISSING_LABELS, status.reason)
+            assertTrue(status.textNodes > 0)
+            assertEquals(1, status.labelMask)
+            assertFalse(status.summary().contains("虚构不应保留的页面内容"))
+            assertTrue(status.summary().contains("交易单号=未见"))
+        }
+        assertTrue(WechatWebReceiptScope.ownedDescendantPackage(null, "fictional.package"))
+        assertFalse(WechatWebReceiptScope.ownedDescendantPackage("other.package", "fictional.package"))
+    }
+
     @Test fun labelProbeNeverCopiesLongMatchedBodyText() {
         val body = object : CharSequence {
             override val length = 100_000
@@ -47,24 +97,24 @@ class WechatWebReceiptScopeTest {
             override fun subSequence(startIndex: Int, endIndex: Int): CharSequence = error("Body must not be inspected")
             override fun toString(): String = error("Body must not be copied")
         }
-        assertFalse(WechatWebReceiptScope.isExactLabel(body, "当前状态"))
-        assertFalse(WechatWebReceiptScope.isExactLabel("文章提到当前状态", "当前状态"))
-        assertTrue(WechatWebReceiptScope.isExactLabel(" 当前状态 ", "当前状态"))
+        assertFalse(WechatWebReceipt.hasLabelPrefix(body, "当前状态"))
+        assertFalse(WechatWebReceipt.hasLabelPrefix("文章提到当前状态", "当前状态"))
+        assertTrue(WechatWebReceipt.hasLabelPrefix(" 当前状态 ", "当前状态"))
         val labelOnly = object : CharSequence {
             override val length = 4
             override fun get(index: Int): Char = "当前状态"[index]
             override fun subSequence(startIndex: Int, endIndex: Int): CharSequence = error("No substring copies")
             override fun toString(): String = error("No label or field-value copies")
         }
-        assertTrue(WechatWebReceiptScope.isExactLabel(labelOnly, "当前状态"))
+        assertTrue(WechatWebReceipt.hasLabelPrefix(labelOnly, "当前状态"))
     }
 
-    private fun withPage(labels: List<String>, nativeLabels: Boolean, check: (AccessibilityNodeInfo) -> Unit) {
+    private fun withPage(labels: List<String>, nativeLabels: Boolean, html: String? = null, check: (AccessibilityNodeInfo) -> Unit) {
         val automation = instrumentation.uiAutomation
         // Connect before constructing WebView so its provider observes accessibility enabled.
         val originalInfo = automation.serviceInfo
-        // Match the production service's default flags, rather than giving the fixture extra nodes.
-        automation.serviceInfo = automation.serviceInfo.apply { flags = 0 }
+        // Match exactly the production service's single node-visibility flag; no all-window access.
+        automation.serviceInfo = automation.serviceInfo.apply { flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS }
         val loaded = CountDownLatch(1)
         try {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
@@ -81,7 +131,7 @@ class WechatWebReceiptScopeTest {
                 activity.setContentView(layout)
                 // Only inert, fictional markup; no JS, network URLs or user's transaction data.
                 web.loadDataWithBaseURL(null, "<html><meta name='viewport' content='width=device-width, initial-scale=1'><body>" +
-                    "<p>FICTIONAL_SCOPE_READY</p>" + labels.joinToString("") { "<p>$it</p>" } +
+                    "<p>FICTIONAL_SCOPE_READY</p>" + (html ?: labels.joinToString("") { "<p>$it</p>" }) +
                     "</body></html>", "text/html", "UTF-8", null)
             }
             assertTrue("Local HTML must finish loading", loaded.await(15, TimeUnit.SECONDS))

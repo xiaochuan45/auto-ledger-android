@@ -3,7 +3,23 @@
 
 import unittest
 
-from verify_apk import xml_resource_path
+from verify_apk import xml_resource_path, audit_accessibility_flags
+
+
+class AccessibilityScopeTest(unittest.TestCase):
+    def test_scoped_flag_and_pinned_previous_configuration(self):
+        for flags in ("2", "0x2", "0x00000002", "flagIncludeNotImportantViews"):
+            audit_accessibility_flags(flags, "current")
+            audit_accessibility_flags(flags, "previous")
+        audit_accessibility_flags("0", "previous")
+        with self.assertRaises(ValueError):
+            audit_accessibility_flags("0", "current")
+
+    def test_expanded_window_or_unexpected_flags_are_rejected(self):
+        for role in ("current", "previous"):
+            for flags in ("64", "66", "0x42", "flagRetrieveInteractiveWindows", "flagIncludeNotImportantViews|flagReportViewIds", "-1"):
+                with self.assertRaises(ValueError):
+                    audit_accessibility_flags(flags, role)
 
 
 class XmlResourceResolutionTest(unittest.TestCase):

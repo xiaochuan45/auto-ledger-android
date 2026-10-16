@@ -338,6 +338,12 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
     val permissions = remember(resumeCount, settings, refreshCount, connections) { PermissionHelper.snapshot(context) }
     val diagnostics = remember(resumeCount, settings, refreshCount, connections) { CaptureDiagnostics.snapshot() }
     val compatibility = remember(resumeCount, refreshCount) { CaptureDiagnostics.compatibilitySnapshot() }
+    val oneShot = remember(resumeCount, refreshCount) { CaptureDiagnostics.oneShotSnapshot() }
+    LaunchedEffect(oneShot.state) {
+        if (oneShot.state == io.github.xiaochuan45.autoledger.capture.OneShotState.WAITING) {
+            delay(oneShot.remainingMillis + 50L); refreshCount++
+        }
+    }
     LaunchedEffect(compatibility.active) {
         if (compatibility.active) { delay(compatibility.remainingMillis + 50L); refreshCount++ }
     }
@@ -392,8 +398,17 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
             OutlinedButton(onClick = { if (!PermissionHelper.openAppSettings(context)) openError = true }, modifier = Modifier.fillMaxWidth()) { Text("打开应用系统设置") }
             Text("不同品牌手机可在系统应用管理中检查电池使用、允许后台活动等选项，名称随品牌和系统版本变化。若服务断开，检查开关或在系统设置中重新启用。", style = MaterialTheme.typography.bodySmall)
         }
+        SettingsCard("已有微信账单读取一次") {
+            Text("点击后30秒内，退出微信付款详情再重新打开它。只尝试读取这一个微信网页窗口的可见文字；不截图，结果仅待核对。页面没有提供文字时仍无法识别。", style = MaterialTheme.typography.bodySmall)
+            Text(oneShot.state.label, modifier = Modifier.testTag("one_shot_status"))
+            OutlinedButton(onClick = { CaptureDiagnostics.requestOneShotWechatReceipt(); refreshCount++ },
+                enabled = settings.enabled && settings.wechatEnabled && permissions.accessibilityConnected && !compatibility.active,
+                modifier = Modifier.fillMaxWidth().testTag("request_one_shot_wechat")) { Text("读取一次已有微信账单") }
+            Text("先结束只读检查，并保持总开关、微信渠道和无障碍服务开启。一次尝试、超时、服务断开或关闭开关后请求结束，不会持续读取网页。", style = MaterialTheme.typography.bodySmall)
+        }
         SettingsCard("本次运行诊断") {
             Text("微信网页账单结构命中 ${diagnostics.webReceiptMatches} 次（结果仍需核对来源）", style = MaterialTheme.typography.bodyMedium)
+            diagnostics.webInspection?.let { Text(it.summary(), style = MaterialTheme.typography.bodySmall) }
             Text("已选渠道窗口事件 ${diagnostics.windowEvents} 次（支持类型 ${diagnostics.supportedWindowEvents} 次）\n已选渠道通知事件 ${diagnostics.notificationEvents} 次\n进入解析 ${diagnostics.observedCount} 次\n处理完成 ${diagnostics.parsedCount} 次（含重复检查）\n筛选跳过 ${diagnostics.skippedCount} 次\n异常 ${diagnostics.failureCount} 次", style = MaterialTheme.typography.bodyMedium)
             Text("事件不是付款笔数；进入解析才表示已通过前面的筛选。普通页面、会话通知等可能被跳过。零事件也可能来自进程重启或系统没有提供信息。", style = MaterialTheme.typography.bodySmall)
             diagnostics.lastSkip?.let { Text("最近跳过：${it.label}", style = MaterialTheme.typography.bodySmall) }
@@ -401,7 +416,7 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
             Text("通知监听恢复请求 ${diagnostics.notificationReconnectRequests} 次", style = MaterialTheme.typography.bodySmall)
             diagnostics.lastNotificationReconnectAt?.let { Text("最近请求时间：${formatTime(it)}", style = MaterialTheme.typography.bodySmall) }
             diagnostics.lastSource?.let { source ->
-                Text("最近监听：${diagnostics.lastChannel?.label ?: "渠道未知"} · ${when (source.name) { "NOTIFICATION" -> "交易通知"; "ACCESSIBILITY" -> "付款页面"; else -> "其他来源" }}", style = MaterialTheme.typography.bodySmall)
+                Text("最近监听：${diagnostics.lastChannel?.label ?: "渠道未知"} · ${when (source.name) { "NOTIFICATION" -> "交易通知"; "ACCESSIBILITY" -> "付款页面"; "USER_WEB_RECEIPT" -> "主动读取微信账单"; else -> "其他来源" }}", style = MaterialTheme.typography.bodySmall)
             }
             diagnostics.lastObservedAt?.let { Text("监听时间：${formatTime(it)}", style = MaterialTheme.typography.bodySmall) }
             diagnostics.lastFailure?.let { failure ->
@@ -440,7 +455,7 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
             if (copyError) Text("复制未完成，可手动记录上方的事件数字和窗口类型。", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { CaptureDiagnostics.clearCompatibilityCheck(); reportCopied = false; refreshCount++ }) { Text("清除窗口类型结果") }
         }
-        InformationCard("识别小样 · 真机待验证", "微信网页账单仅在完整栏目结构命中后尝试识别，结果进入待核对，不自动计入支出；来源与字段需你核对。网页筛选只比较有界短栏目，未匹配内容不解析、不保存。微信、支付宝的其他支付、免密及后台扣费仍需逐项实测；没有可读信息时请手动补记。")
+        InformationCard("识别小样 · 真机待验证", "微信网页账单仅在完整栏目结构命中后尝试识别，结果进入待核对，不自动计入支出；来源与字段需你核对。自动筛选只比较有界栏目；主动读取一次需要你选择已有详情。未识别为交易的内容不保存。微信、支付宝的其他支付、免密及后台扣费仍需逐项实测；没有可读信息时请手动补记。")
         SettingsCard("隐私与数据") {
             Text("仅处理微信、支付宝必要交易页面和通知，开关关闭后停止处理。识别、分类和保存均在本地，不申请联网权限。")
             Text("不保存整屏原文、截图、聊天、密码或验证码。系统账目自动备份已禁用。")

@@ -24,8 +24,13 @@ internal class CaptureDispatcher(context: Context) {
 
     fun submit(input: CaptureInput) {
         val channel = PaymentChannel.fromPackage(input.packageName) ?: return
-        if (!preferences.isCaptureEnabled(channel) || !CapturePolicy.accepts(input)) return
+        if (!preferences.isCaptureEnabled(channel)) return
         if (CaptureDiagnostics.compatibilityActive()) return
+        if (!CapturePolicy.accepts(input)) {
+            if (input.source == io.github.xiaochuan45.autoledger.core.CaptureSource.USER_WEB_RECEIPT)
+                CaptureDiagnostics.skipped(CaptureSkip.WEB_FIELDS_UNAVAILABLE, input.source)
+            return
+        }
         if (inFlight.incrementAndGet() > MAX_IN_FLIGHT) {
             inFlight.decrementAndGet()
             CaptureDiagnostics.failed(CaptureFailure.QUEUE_FULL)

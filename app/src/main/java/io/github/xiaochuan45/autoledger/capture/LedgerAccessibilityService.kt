@@ -12,7 +12,6 @@ import io.github.xiaochuan45.autoledger.core.CapturePolicy
 import io.github.xiaochuan45.autoledger.core.CaptureSource
 import io.github.xiaochuan45.autoledger.core.PaymentChannel
 import io.github.xiaochuan45.autoledger.core.WechatWebReceipt
-import java.util.ArrayDeque
 import java.util.UUID
 
 class LedgerAccessibilityService : AccessibilityService() {
@@ -31,6 +30,7 @@ class LedgerAccessibilityService : AccessibilityService() {
         settingsObserver = preferences.observeChanges {
             dispatcher.cancelPending()
             clearWindow()
+            CaptureDiagnostics.cancelOneShotWechatReceipt()
         }
     }
 
@@ -95,7 +95,12 @@ class LedgerAccessibilityService : AccessibilityService() {
         }
 
         val current = session ?: return
-        val remainingDelay = (MIN_READ_INTERVAL_MS - (nowElapsed - lastReadElapsed)).coerceAtLeast(0)
+        val intervalDelay = (MIN_READ_INTERVAL_MS - (nowElapsed - lastReadElapsed)).coerceAtLeast(0)
+        // An asynchronous receipt must finish painting before either automatic or explicit one-time reading.
+        // Content events reschedule this same task; there is no polling or repeated screenshot/text capture.
+        val webDelay = if (WechatWebReceipt.isCandidate(current.channel, current.screenClass))
+            maxOf(500L, 750L - (nowElapsed - current.verifiedAtElapsed)) else 0L
+        val remainingDelay = maxOf(intervalDelay, webDelay)
         scheduledRead?.let(handler::removeCallbacks)
         val read = Runnable {
             scheduledRead = null
@@ -130,24 +135,28 @@ class LedgerAccessibilityService : AccessibilityService() {
                 return
             }
             val webReceipt = WechatWebReceipt.isCandidate(expected.channel, expected.screenClass)
+            val requested = webReceipt && CaptureDiagnostics.takeOneShotWechatReceipt(expected.channel, expected.screenClass)
             val scopedRoot = if (webReceipt) {
-                val matched = try {
-                    WechatWebReceiptScope.findReceiptRoot(root, expected.channel.packageName, expected.windowId)
-                } finally { releaseNode(root) }
-                if (matched == null) {
+                val matched = try { WechatWebReceiptScope.findReceiptRoot(root, expected.channel.packageName, expected.windowId) }
+                    catch (failure: RuntimeException) { releaseNode(root); throw failure }
+                if (matched == null && !requested) {
+                    releaseNode(root)
                     CaptureDiagnostics.skipped(CaptureSkip.WEB_RECEIPT_SCOPE, CaptureSource.ACCESSIBILITY)
                     return
                 }
-                CaptureDiagnostics.webReceiptMatched()
-                matched
+                if (matched != null) {
+                    releaseNode(root)
+                    CaptureDiagnostics.webReceiptMatched()
+                    matched
+                } else root // Explicit one-time selection: only this validated app/window, still review-only.
             } else root
-            val texts = collectPaymentText(scopedRoot, expected.channel.packageName, if (webReceipt) 48 else 24) ?: return
+            val texts = PaymentTextReader.read(scopedRoot, expected.channel.packageName, webReceipt) ?: return
             if (texts.isEmpty()) {
                 CaptureDiagnostics.skipped(CaptureSkip.EMPTY_TEXT, CaptureSource.ACCESSIBILITY)
                 return
             }
             dispatcher.submit(CaptureInput(
-                source = CaptureSource.ACCESSIBILITY,
+                source = if (requested) CaptureSource.USER_WEB_RECEIPT else CaptureSource.ACCESSIBILITY,
                 packageName = expected.channel.packageName,
                 texts = texts,
                 observedAt = System.currentTimeMillis(),
@@ -160,62 +169,6 @@ class LedgerAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** Takes ownership of root and releases every obtained node, including exceptional paths. */
-    private fun collectPaymentText(root: AccessibilityNodeInfo, expectedPackage: String, fragmentLimit: Int): List<String>? {
-        val queue = ArrayDeque<AccessibilityNodeInfo>()
-        val texts = TransientTextBuffer(fragmentLimit)
-        var visited = 0
-        queue.add(root)
-        try {
-            while (queue.isNotEmpty() && visited < MAX_NODES && !texts.incomplete) {
-                val node = queue.removeFirst()
-                visited++
-                try {
-                    val nodePackage = node.packageName?.toString()
-                    if (nodePackage != null && nodePackage != expectedPackage) continue
-                    // Skip editable/password subtrees before reading their text or descriptions.
-                    if (!node.isVisibleToUser || node.isPassword || node.isEditable ||
-                        node.className?.toString()?.contains("EditText", ignoreCase = true) == true) continue
-                    val text = node.text
-                    val description = node.contentDescription
-                    // A payment authorization/verification view is not a receipt. Discard the sample.
-                    if (hasSensitiveText(text) || hasSensitiveText(description)) {
-                        CaptureDiagnostics.skipped(CaptureSkip.SENSITIVE_GUARD, CaptureSource.ACCESSIBILITY)
-                        return null
-                    }
-                    texts.add(text)
-                    texts.add(description)
-                    val available = MAX_NODES - visited - queue.size
-                    val childCount = node.childCount
-                    if (childCount > available) {
-                        // Omitted nodes may contain a failure/discount/status correction.
-                        texts.markIncomplete()
-                        continue
-                    }
-                    for (index in 0 until childCount) {
-                        val child = node.getChild(index)
-                        if (child == null) {
-                            // A changing tree is also incomplete; never commit its partial snapshot.
-                            texts.markIncomplete()
-                            break
-                        }
-                        queue.addLast(child)
-                    }
-                } finally {
-                    releaseNode(node)
-                }
-            }
-            if (queue.isNotEmpty()) texts.markIncomplete()
-            if (texts.incomplete) {
-                CaptureDiagnostics.failed(CaptureFailure.SKIPPED_INCOMPLETE)
-                return null
-            }
-            return texts.toList()
-        } finally {
-            while (queue.isNotEmpty()) releaseNode(queue.removeFirst())
-        }
-    }
-
     private fun clearWindow() {
         scheduledRead?.let(handler::removeCallbacks)
         scheduledRead = null
@@ -224,12 +177,14 @@ class LedgerAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() {
+        CaptureDiagnostics.cancelOneShotWechatReceipt()
         CaptureServiceConnections.accessibilityConnected = false
         clearWindow()
         dispatcher.cancelPending()
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
+        CaptureDiagnostics.cancelOneShotWechatReceipt()
         CaptureServiceConnections.accessibilityConnected = false
         clearWindow()
         dispatcher.cancelPending()
@@ -237,6 +192,7 @@ class LedgerAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        CaptureDiagnostics.cancelOneShotWechatReceipt()
         CaptureServiceConnections.accessibilityConnected = false
         clearWindow()
         settingsObserver?.close()
@@ -253,7 +209,6 @@ class LedgerAccessibilityService : AccessibilityService() {
     )
 
     private companion object {
-        const val MAX_NODES = 150
         const val MIN_READ_INTERVAL_MS = 600L
         const val SESSION_VALIDITY_MS = 45_000L
         @Suppress("DEPRECATION")

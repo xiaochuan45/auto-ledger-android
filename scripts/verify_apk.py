@@ -219,8 +219,20 @@ def audit_backup(apk: Path, app: ET.Element, analyzer: str, resources: str, outp
     audit_exclusions(new_root.find("device-transfer"), "device-transfer")
 
 
+def audit_accessibility_flags(flags: str, role: str) -> None:
+    if flags == "flagIncludeNotImportantViews":
+        return
+    if role == "previous" and flags == "flagDefault":
+        return
+    if re.fullmatch(r"0x[0-9a-fA-F]+|[0-9]+", flags):
+        value = int(flags, 16 if flags.startswith("0x") else 10)
+        require(value in ({0, 2} if role == "previous" else {2}), "Unexpected accessibility flag mask")
+        return
+    require(False, "Unexpected accessibility flags; all-window, screenshot or gesture expansion is forbidden")
+
+
 def audit_accessibility(apk: Path, service: ET.Element, analyzer: str,
-                        resources: str, output_dir: Path) -> None:
+                        resources: str, output_dir: Path, role: str = "current") -> None:
     metadata = service.findall("meta-data")
     require(len(metadata) == 1, "Accessibility service needs exactly one configuration")
     item = metadata[0]
@@ -236,7 +248,7 @@ def audit_accessibility(apk: Path, service: ET.Element, analyzer: str,
     else:
         require(int(event_types, 0) == (32 | 2048), "Unexpected accessibility event mask")
     flags = config.get(ANDROID + "accessibilityFlags", "0")
-    require(flags in {"0", "0x0", "flagDefault"}, "Accessibility flags must not expand window access")
+    audit_accessibility_flags(flags, role)
     require(config.get(ANDROID + "canRetrieveWindowContent") == "true", "Payment parsing needs window content")
     for attribute in ("canPerformGestures", "canTakeScreenshot", "canRequestTouchExplorationMode",
                       "canRequestFilterKeyEvents", "canControlMagnification",
@@ -288,7 +300,7 @@ def main() -> int:
                             args.version_code, args.version_name, args.build_type)
     resources = run(aapt2, "dump", "resources", str(args.apk))
     audit_backup(args.apk, result["application"], analyzer, resources, args.output_dir)
-    audit_accessibility(args.apk, result["accessibility"], analyzer, resources, args.output_dir)
+    audit_accessibility(args.apk, result["accessibility"], analyzer, resources, args.output_dir, args.release_role)
     certificate = "未检查：仅供 CI 的未签名 release 构建，禁止分发安装"
     if not args.unsigned:
         certificate, signature_text = verified_certificate(args.apk)
@@ -315,7 +327,7 @@ def main() -> int:
 | 对外 Activity | 仅启动 Activity：`{result['launcher']}` |
 | 对外服务 | 仅通知监听和无障碍；分别受系统 BIND_* 权限保护 |
 | 广播接收器 | 无 |
-| 无障碍范围 | 仅微信、支付宝；仅窗口变化和内容变化；默认 flags；无截图、手势或全部窗口访问 |
+| 无障碍范围 | 仅微信、支付宝；仅窗口变化和内容变化；flagIncludeNotImportantViews（旧版可为默认）；无截图、手势或全部窗口访问 |
 | AndroidX 初始化 Provider | {result['provider_count']} 个；如存在，必须不可导出 |
 | 签名证书 SHA-256 | `{certificate}` |
 | 构建类型 | `{args.build_type}`；debuggable={str(args.build_type == 'debug').lower()} |

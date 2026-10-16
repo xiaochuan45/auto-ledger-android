@@ -35,6 +35,8 @@ object CapturePolicy {
             CaptureSource.NOTIFICATION -> isTrustedNotificationTitle(channel, input.title)
             CaptureSource.ACCESSIBILITY -> isPaymentWindow(channel, input.screenClass) ||
                 (WechatWebReceipt.isCandidate(channel, input.screenClass) && WechatWebReceipt.hasReceiptLabels(input.texts))
+            CaptureSource.USER_WEB_RECEIPT -> WechatWebReceipt.isCandidate(channel, input.screenClass) &&
+                WechatWebReceipt.hasReceiptLabels(input.texts, userRequested = true)
             CaptureSource.MANUAL, CaptureSource.WEB_RECEIPT -> false // Only the scoped parser can produce a web receipt.
         }
     }

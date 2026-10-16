@@ -28,7 +28,7 @@ class WechatWebReceiptTest {
 
     @Test fun ordinaryWebArticleOrMissingColumnCannotPassScopeEvenWithPaymentWords() {
         assertNull(PaymentParser.parse(input(listOf("支付成功", "实付金额：42.70元"))))
-        WechatWebReceipt.labels.forEach { missing ->
+        WechatWebReceipt.requiredLabels.forEach { missing ->
             assertNull("Missing $missing", PaymentParser.parse(input(receipt().filterNot { it == missing })))
         }
         val article = WechatWebReceipt.labels.map { "本文介绍${it}的含义" } + listOf("支付成功", "实付金额：42.70元")
@@ -76,6 +76,52 @@ class WechatWebReceiptTest {
         assertNull(requireNotNull(PaymentParser.parse(input(receipt() + "币种：USD"))).amountMinor)
         assertNull(requireNotNull(PaymentParser.parse(input(receipt("-42.701")))).amountMinor)
         assertNull(PaymentParser.parse(input(receipt() + "x".repeat(16_384))))
+    }
+
+    @Test fun mergedRowsAndMissingNonFinancialFooterStillKeepExactPaymentFields() {
+        val rows = listOf("虚构商店", "-42.70", "当前状态支付成功", "支付时间2025年3月12日 10:20:30",
+            "支付方式零钱", "交易单号FICTIONAL-MERGED-A")
+        val value = requireNotNull(PaymentParser.parse(input(rows)))
+        assertEquals(4270L, value.amountMinor)
+        assertEquals("FICTIONAL-MERGED-A", value.transactionId)
+        assertEquals(TimeSource.PAYMENT, value.timeSource)
+        assertEquals(RecordStatus.REVIEW, value.status)
+        assertEquals(value, PaymentParser.parse(input(listOf(rows.joinToString("\n")))))
+    }
+
+    @Test fun userRequestedPartialReceiptCannotBypassChannelOrConfirmationRules() {
+        val partial = input(listOf("虚构商店", "-42.70", "当前状态支付成功", "支付时间2025年3月12日 10:20:30"))
+        assertNull(PaymentParser.parse(partial))
+        val requested = partial.copy(source = CaptureSource.USER_WEB_RECEIPT)
+        val value = requireNotNull(PaymentParser.parse(requested))
+        assertEquals(4270L, value.amountMinor)
+        assertEquals(RecordStatus.REVIEW, value.status)
+        assertNull(value.transactionId)
+        assertNull(PaymentParser.parse(requested.copy(screenClass = "com.tencent.mm.ui.LauncherUI")))
+        assertNull(PaymentParser.parse(requested.copy(packageName = PaymentChannel.ALIPAY.packageName)))
+        assertNull(PaymentParser.parse(requested.copy(texts = listOf("虚构网页", "支付成功"))))
+    }
+
+    @Test fun boundedPrefixComparisonNeverCopiesValuesOrReadsBeyondTheFirstValueCharacter() {
+        val merged = object : CharSequence {
+            override val length = 8
+            override fun get(index: Int): Char {
+                check(index <= 4) { "Do not inspect the field value" }
+                return "当前状态支付成功"[index]
+            }
+            override fun subSequence(startIndex: Int, endIndex: Int): CharSequence = error("No copying")
+            override fun toString(): String = error("No copying")
+        }
+        assertTrue(WechatWebReceipt.hasLabelPrefix(merged, "当前状态"))
+        assertFalse(WechatWebReceipt.hasLabelPrefix("支付时间是什么", "支付时间"))
+        assertFalse(WechatWebReceipt.hasLabelPrefix("交易单号格式介绍", "交易单号"))
+        val huge = object : CharSequence {
+            override val length = 100_000
+            override fun get(index: Int): Char = error("No body reads")
+            override fun subSequence(startIndex: Int, endIndex: Int): CharSequence = error("No copying")
+            override fun toString(): String = error("No copying")
+        }
+        assertFalse(WechatWebReceipt.hasLabelPrefix(huge, "当前状态"))
     }
 
     @Test fun historicalReopenKeepsFingerprintButDifferentTradeNumberDoesNot() {
