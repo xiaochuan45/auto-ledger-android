@@ -1,12 +1,14 @@
 package io.github.xiaochuan45.autoledger.capture
 
 import android.os.SystemClock
+import android.os.Build
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.view.accessibility.AccessibilityNodeInfo
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.view.ViewGroup
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -118,12 +120,15 @@ class WechatWebReceiptScopeTest {
         val loaded = CountDownLatch(1)
         try {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            var page: WebView? = null
+            try {
             scenario.onActivity { activity ->
                 val layout = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
                 if (nativeLabels) WechatWebReceipt.labels.forEach { label ->
                     layout.addView(TextView(activity).apply { text = label })
                 }
                 val web = WebView(activity)
+                page = web
                 web.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) { loaded.countDown() }
                 }
@@ -137,6 +142,8 @@ class WechatWebReceiptScopeTest {
             assertTrue("Local HTML must finish loading", loaded.await(15, TimeUnit.SECONDS))
             val deadline = SystemClock.uptimeMillis() + 15_000
             while (SystemClock.uptimeMillis() < deadline) {
+                // A new Activity/WebView must not reuse the preceding fixture's cached virtual tree.
+                if (Build.VERSION.SDK_INT >= 33) automation.clearCache()
                 val root = instrumentation.uiAutomation.rootInActiveWindow
                 if (root != null) {
                     try {
@@ -146,6 +153,15 @@ class WechatWebReceiptScopeTest {
                 SystemClock.sleep(100)
             }
             fail("Local WebView accessibility tree did not become available")
+            } finally {
+                // Activity destruction alone does not destroy a WebView or release its provider.
+                scenario.onActivity {
+                    page?.let { web ->
+                        (web.parent as? ViewGroup)?.removeView(web)
+                        web.destroy()
+                    }
+                }
+            }
         }
         } finally { automation.serviceInfo = originalInfo }
     }
@@ -160,7 +176,8 @@ class WechatWebReceiptScopeTest {
             while (queue.isNotEmpty() && visited++ < 200) {
                 val node = queue.removeFirst()
                 try {
-                    if (node.text?.toString()?.contains("FICTIONAL_SCOPE_READY") == true) return true
+                    if (node.text?.toString()?.contains("FICTIONAL_SCOPE_READY") == true ||
+                        node.contentDescription?.toString()?.contains("FICTIONAL_SCOPE_READY") == true) return true
                     for (index in 0 until node.childCount) node.getChild(index)?.let(queue::addLast)
                 } finally { release(node) }
             }
