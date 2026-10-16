@@ -1,0 +1,30 @@
+{
+  "source_sha": "91c11dd640a0eda40445b1def542cf13555628a3",
+  "source_run": 38870100680,
+  "apk_sha256": "b1a54317ef9e8fa819bddd34ffa0506cedbcad16848123b57af0b88935482522",
+  "apk_bytes": 7171482,
+  "signed_run": 38870253489,
+  "signed_artifact": 12032903263,
+  "public_http": {
+    "auto-ledger-prototype.apk": 200,
+    "auto-ledger-prototype.apk.sha256": 200
+  },
+  "public_bytes_equal_tested": true,
+  "version": "0.2.6-prototype",
+  "version_code": 8,
+  "tag": "prototype-v0.2.6",
+  "source_instrumentation_passed": {
+    "26": 43,
+    "35": 44,
+    "36": 44
+  },
+  "signed_instrumentation_api": 35,
+  "signed_instrumentation_passed": 44,
+  "upgrade_from_public_version_code": 7,
+  "upgrade_seed_passed": 1,
+  "upgrade_verify_passed": 1,
+  "unit_passed": 91,
+  "python_passed": 10,
+  "phone_validation": "pending",
+  "certificate_sha256": "0e2a128391be8ae3d39140ed5d2cd7de8256d62b19233b3593d9ef97180b0073"
+}

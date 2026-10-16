@@ -1,5 +1,13 @@
 # 第二阶段：自动识别小样
 
+## 最新交付 0.2.6：入口事件即时检查
+
+已公开 [APK](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.6/auto-ledger-prototype.apk) / [发布页](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.6)。生产源码 `91c11dd640a0eda40445b1def542cf13555628a3`，code8；同签名直接覆盖 0.2.5，不卸载、不清数据。APK 7,171,482 bytes，SHA-256 `b1a54317ef9e8fa819bddd34ffa0506cedbcad16848123b57af0b88935482522`；公开 APK、校验文件均 HTTP 200，下载 APK 与云端被测文件逐字节一致。
+
+JVM 91、Python 10、构建和 Lint 通过。[源码 CI](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38870100680) 的 API 26 实际执行 43 项，API 35 / 36 各 44 项通过；[最终签名 APK CI](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38870253489) 的 API 35 普通 44 项、公开旧 code7 写入虚构数据 1 项、覆盖准确 code8 后保留账单/去重/开关验证 1 项通过。[最终包审计](evidence/0.2.6-prototype/permissions-audit.md)无联网、截图或全部窗口权限。
+
+本版手机安装、真实微信字段与保存去重仍待验证；新付款自动入账、后台扣费及长期运行未通过。不以模拟成功覆盖下方 0.2.5 的真实失败。无消费验证步骤见 [手机指南](PHASE2_TESTING.md)，实现和限制见 [0.2.6 说明](RELEASE_0.2.6.md)。
+
 ## 最新真机反馈：0.2.5 仍未触发正文读取
 
 用户在 API 36 返回 0.2.5 摘要：只读检查未运行，请求超时且本进程尝试 0 次；请求期间已观察到 `AppBrandPluginUI`、`LauncherUI`。窗口事件 17，原生支持 0、详情结构命中 0、通知/解析/完成/异常均 0；跳过 12（无已验证窗口 10，不支持页面 2）。没有最近结构检查。这确认该 APK 已安装启动，入口事件在请求期间收到，但正文读取没有触发，不代表真实微信字段不可读。

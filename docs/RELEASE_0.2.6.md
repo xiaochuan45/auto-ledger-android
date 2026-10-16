@@ -22,4 +22,18 @@
 
 ## 验证与交付
 
-本地与云端验证进行中，尚未公开交付本版 APK。新增回归重放小程序准入后立即主界面事件，验证读取检查先发生而非等待被取消；加载不完整后重入、检查节流/上限、超时/取消/错误窗口和自动路径不放宽。模拟原生商家详情复用生产触发器，再经过四栏目、正文、解析和 Room 保存/重开去重；只用虚构数据，不打开真实微信或拼多多。
+| 项目 | 结果与证据 |
+|---|---|
+| 下载 | [APK](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.6/auto-ledger-prototype.apk) / [发布页](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.6) |
+| 生产源码 | [`91c11dd640a0eda40445b1def542cf13555628a3`](https://github.com/xiaochuan45/auto-ledger-android/commit/91c11dd640a0eda40445b1def542cf13555628a3) |
+| APK 版本、大小 | `0.2.6-prototype` / code8；7,171,482 bytes |
+| APK SHA-256 | `b1a54317ef9e8fa819bddd34ffa0506cedbcad16848123b57af0b88935482522` |
+| 签名证书 SHA-256 | `0e2a128391be8ae3d39140ed5d2cd7de8256d62b19233b3593d9ef97180b0073`，沿用原固定签名 |
+| 本地验证 | JVM 91 项、Python 10 项、构建、Lint 和最终签名包审计通过 |
+| 源码模拟器 | [run 38870100680](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38870100680) 成功：API 26 实际执行 43 项，API 35、36 各 44 项通过。API 29+ 通知 shell 用例在 API 26 按 SDK 条件不执行 |
+| 准确签名 APK | [run 38870253489](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38870253489) 成功：API 35 普通 44 项；公开旧 code7 写入虚构数据 1 项，覆盖准确 code8 后账单、去重和开关保留验证 1 项通过 |
+| 权限与证据 | [准确签名包审计](evidence/0.2.6-prototype/permissions-audit.md) / [artifact 12032903263](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38870253489/artifacts/12032903263)，无联网、截图或全部窗口权限 |
+| 公开下载 | APK 和校验文件均 HTTP 200；公开下载 APK 与云端被测的最终签名文件逐字节一致 |
+| 用户手机 | 0.2.6 待安装验证；真实微信字段、保存去重、新付款及后台运行均待验证 |
+
+新增回归重放小程序准入后立即主界面事件，验证读取检查先发生而非等待被取消；加载不完整后重入、检查节流/上限、超时/取消/错误窗口和自动路径不放宽。模拟原生商家详情复用生产触发器，再经过四栏目、正文、解析和 Room 保存/重开去重；只用虚构数据，不打开真实微信或拼多多。

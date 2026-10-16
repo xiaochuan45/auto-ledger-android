@@ -4,11 +4,11 @@
 
 ## 当前进度
 
-最新 `0.2.5-prototype` 补充商家页「交易详情」的主动单次读取。微信 8.0.78 / Android 16 的最新只读反馈确认该入口使用 `AppBrandPluginUI`；0.2.4 不支持，尝试为 0。新路径仅用户明确请求时检查当前小程序窗口，四项交易栏目齐全后才读取，不自动放开所有小程序、主界面或聊天。结果一律待核对，确认前不计支出，不修改已有同交易号记录。**真实微信字段可读性及拼多多付款自动入账尚未通过真机验证。** 依据见 [GitHub 对照调研](docs/WECHAT_ACCESSIBILITY_RESEARCH.md)。
+最新 `0.2.6-prototype` 修复商家小程序入口检查被后续窗口事件取消的问题：用户主动请求后，在准入事件当下检查当前根窗口和四栏目，栏目齐全才读取正文一次。页面未加载完时只随后续事件有限检查，最多 8 次，没有轮询。微信 8.0.78 / Android 16 的 0.2.5 真机仍超时、正文尝试 0 次；本版修复的是可复现的触发缺陷，旧摘要不能证明每次失败只有同一个原因。**真实微信字段可读性及拼多多付款自动入账仍待真机验证。** 详情结果一律待核对，确认前不计支出，不修改已有同交易号记录。
 
-**[最新 APK：本地账本 0.2.5-prototype](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.5/auto-ledger-prototype.apk)**，约 7.16 MB，最低 Android 8.0；[发布页与证据](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.5)。同签名直接覆盖旧版，不卸载或清数据。结束只读检查 → 微信准备好商家「交易详情」→ 回账本设置点「读取一次已有微信账单」→ 30 秒内切回详情停留约 3 秒 → 查看待核对和复制诊断，无需再次消费，详见 [手机步骤](docs/PHASE2_TESTING.md)。
+**[最新 APK：本地账本 0.2.6-prototype](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.6/auto-ledger-prototype.apk)**，约 7.17 MB，最低 Android 8.0；[发布页与证据](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.6)。同签名直接覆盖旧版，不卸载或清数据。结束只读检查 → 微信准备好商家「交易详情」→ 回账本设置点「读取一次已有微信账单」→ 30 秒内切回详情停留约 3 秒 → 查看待核对。失败时复制窗口检查次数/阶段和最近结构摘要，无需再消费，详见 [手机步骤](docs/PHASE2_TESTING.md)。
 
-构建、Lint、JVM 84 项及 Python 10 项通过。源码模拟器 API 26 实际执行 43 项，API 35 / 36 各 44 项通过；最终固定签名 APK 通过 API 35 普通 44 项及公开旧 0.2.4 → 本版覆盖更新的账单、去重和开关保留检查。公开下载 APK 与云端被测签名包逐字节一致；完整校验见 [本版说明](docs/RELEASE_0.2.5.md)。测试使用虚构数据，没有打开微信或拼多多；本版真机结果、真实付款、后台扣费及长期运行待验证。没有新增联网、截图、全部窗口访问或原始账单日志；尚未实现 OCR。
+构建、Lint、JVM 91 项和 Python 10 项通过。源码 API 26 实际执行 43 项、API 35 / 36 各 44 项通过；最终签名 APK 通过 API 35 的 44 项及公开旧 code7 → code8 覆盖保留检查。公开下载与被测包逐字节一致；完整证据见 [本版说明](docs/RELEASE_0.2.6.md)。测试使用虚构数据，没有打开真实微信或拼多多；本版真机、真实付款、后台扣费及长期运行待验证。没有新增联网、截图、全部窗口访问或原始账单日志，尚未实现 OCR。既有 [GitHub 对照调研](docs/WECHAT_ACCESSIBILITY_RESEARCH.md)保留适配依据与差异。
 
 本版与第一阶段 `.preview` 应用并列安装。当前缺少完整分类规则、周期统计、退款关联、账单导入导出及加密备份，请保留其他账目来源，不作为唯一账本。
 
