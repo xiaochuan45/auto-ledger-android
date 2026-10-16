@@ -1,5 +1,13 @@
 # 第二阶段：自动识别小样
 
+## 最新交付 0.2.7：可见子字段与请求归属
+
+已公开 [APK](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.7/auto-ledger-prototype.apk) / [发布页](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.7)，同签名直接覆盖 0.2.6，不卸载、不清数据。生产源码 `7e3878614882f4481391c5a41252c40344d0a45b`；测试及脚本最终源码 `78b5f3dc646bc60f529cca05890b50f590984a70`。code9，7,171,482 bytes，SHA-256 `e99faa4c5b4dbdfb738760fed5073bf8a7b2041c6d253892f55af531e2478e20`；公开 APK 和校验文件 HTTP 200，APK 与准确被测签名文件逐字节一致。
+
+JVM 95、Python 10、构建和 Lint 通过。[最终源码矩阵 38875428787](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38875428787) API 26 实际执行 47 项，API 35 / 36 各 48 项通过；[准确签名 APK 38874549930](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38874549930) API 35 普通 48 项，以及公开旧 code8 种子、旧版新进程基线、覆盖 code9 后保留账单/去重/采集开关三个阶段各 1 项通过。[最终包审计](evidence/0.2.7-prototype/permissions-audit.md)无联网、截图或全部窗口权限。
+
+首轮升级开关断言、随后模拟服务初始化及界面点击定位的失败与测试修正均保留在 [0.2.7 交付记录](RELEASE_0.2.7.md)，修正期间生产 APK 没有改变。模拟验证不能替代微信真机，本版安装、真实字段及保存去重待验证；拼多多新付款自动入账、后台扣费及长期运行未通过。无消费步骤见 [手机指南](PHASE2_TESTING.md)。
+
 ## 最新真机反馈：0.2.6 仍未形成账单
 
 用户 API 36 摘要：当前请求仍等待、窗口检查 0、正文尝试 0，仅看到 `LauncherUI`；本进程累计窗口事件 295、支持 0、详情结构命中 0、通知/解析/完成/异常均 0。跳过共 295：无已验证窗口 281、不支持页面 13、栏目拒绝 1。进程保留的最近结构检查为小程序详情：只访问 1 个节点，因不可见被过滤，未见文字和四栏目。截图账单仍为空。这确认 0.2.6 已安装启动、曾执行一次结构检查但没有字段；当前请求 0 与最近结构结果可能来自不同请求，不能混为一次检查，也不能据此断言微信没有提供任何文字。

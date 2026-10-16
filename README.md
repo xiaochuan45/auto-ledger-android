@@ -4,11 +4,11 @@
 
 ## 当前进度
 
-最新 `0.2.6-prototype` 修复商家小程序入口检查被后续窗口事件取消的问题：用户主动请求后，在准入事件当下检查当前根窗口和四栏目，栏目齐全才读取正文一次。页面未加载完时只随后续事件有限检查，最多 8 次，没有轮询。微信 8.0.78 / Android 16 的 0.2.5 真机仍超时、正文尝试 0 次；本版修复的是可复现的触发缺陷，旧摘要不能证明每次失败只有同一个原因。**真实微信字段可读性及拼多多付款自动入账仍待真机验证。** 详情结果一律待核对，确认前不计支出，不修改已有同交易号记录。
+最新 `0.2.7-prototype` 修正主动小程序详情在不可见结构容器处丢弃可见子字段的问题，并让新请求清除旧结构结果、显示请求编号与检查归属。用户的 0.2.6 真机仍无记录：曾仅访问首节点就因不可见停止；这不足以断言微信完全没有提供文字，也没有证明内部存在可见字段。**微信 8.0.78 / Android 16 的详情读取及拼多多新付款自动记账仍未真机通过。** 本版只读取符合边界的可见字段，主界面、聊天及不可见文字仍拒绝；所有详情结果待核对，确认前不计支出。
 
-**[最新 APK：本地账本 0.2.6-prototype](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.6/auto-ledger-prototype.apk)**，约 7.17 MB，最低 Android 8.0；[发布页与证据](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.6)。同签名直接覆盖旧版，不卸载或清数据。结束只读检查 → 微信准备好商家「交易详情」→ 回账本设置点「读取一次已有微信账单」→ 30 秒内切回详情停留约 3 秒 → 查看待核对。失败时复制窗口检查次数/阶段和最近结构摘要，无需再消费，详见 [手机步骤](docs/PHASE2_TESTING.md)。
+**[最新 APK：本地账本 0.2.7-prototype](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.7/auto-ledger-prototype.apk)**，约 7.17 MB，最低 Android 8.0；[发布页与证据](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.7)。同签名直接覆盖旧版，不卸载或清数据。结束只读检查 → 微信准备好商家「交易详情」→ 回账本设置点「读取一次已有微信账单」→ 30 秒内切回详情 → 查看待核对。失败时保留请求编号、根可见性/子节点与固定栏目摘要即可，无需再次消费，详见 [手机步骤](docs/PHASE2_TESTING.md)。
 
-构建、Lint、JVM 91 项和 Python 10 项通过。源码 API 26 实际执行 43 项、API 35 / 36 各 44 项通过；最终签名 APK 通过 API 35 的 44 项及公开旧 code7 → code8 覆盖保留检查。公开下载与被测包逐字节一致；完整证据见 [本版说明](docs/RELEASE_0.2.6.md)。测试使用虚构数据，没有打开真实微信或拼多多；本版真机、真实付款、后台扣费及长期运行待验证。没有新增联网、截图、全部窗口访问或原始账单日志，尚未实现 OCR。既有 [GitHub 对照调研](docs/WECHAT_ACCESSIBILITY_RESEARCH.md)保留适配依据与差异。
+JVM 95 项、Python 10 项、构建和 Lint 通过。最终源码矩阵 API 26 实际执行 47 项，API 35 / 36 各 48 项通过；准确签名 APK 的 API 35 普通 48 项、公开旧版重启及 code8→9 升级保留检查均通过。公开 APK 与被测文件逐字节一致，完整证据见 [0.2.7 说明](docs/RELEASE_0.2.7.md)。自动化仅使用虚构页面，没有打开微信或拼多多；真机字段、自动付款、后台扣费及长期运行仍待验证。没有增加联网、截图、全部窗口权限或原文日志；OCR、账单导入仍未实现。既有 [GitHub 对照调研](docs/WECHAT_ACCESSIBILITY_RESEARCH.md)保留适配依据与差异。
 
 本版与第一阶段 `.preview` 应用并列安装。当前缺少完整分类规则、周期统计、退款关联、账单导入导出及加密备份，请保留其他账目来源，不作为唯一账本。
 

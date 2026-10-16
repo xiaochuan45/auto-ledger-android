@@ -1,0 +1,39 @@
+{
+  "source_sha": "7e3878614882f4481391c5a41252c40344d0a45b",
+  "source_run": 38872453856,
+  "apk_sha256": "e99faa4c5b4dbdfb738760fed5073bf8a7b2041c6d253892f55af531e2478e20",
+  "apk_bytes": 7171482,
+  "failed_signed_run": 38872659361,
+  "verification_sha": "78b5f3dc646bc60f529cca05890b50f590984a70",
+  "second_failed_signed_run": 38873330591,
+  "previous_verification_source_run": 38873256169,
+  "signed_run": 38874549930,
+  "verification_source_run": 38875428787,
+  "signed_artifact": 12034479394,
+  "signed_verification_sha": "a8ab09421664311055a4a65c5b3eda3e57c510c7",
+  "second_failed_verification_source_run": 38874389323,
+  "public_http": {
+    "auto-ledger-prototype.apk": 200,
+    "auto-ledger-prototype.apk.sha256": 200
+  },
+  "public_bytes_equal_tested": true,
+  "version": "0.2.7-prototype",
+  "version_code": 9,
+  "tag": "prototype-v0.2.7",
+  "source_instrumentation_passed": {
+    "26": 47,
+    "35": 48,
+    "36": 48
+  },
+  "signed_instrumentation_api": 35,
+  "signed_instrumentation_passed": 48,
+  "upgrade_from_public_version_code": 8,
+  "upgrade_seed_passed": 1,
+  "old_version_restart_verification_passed": 1,
+  "upgrade_verify_passed": 1,
+  "unit_passed": 95,
+  "python_passed": 10,
+  "phone_validation": "pending",
+  "production_unchanged_during_fixture_fixes": true,
+  "certificate_sha256": "0e2a128391be8ae3d39140ed5d2cd7de8256d62b19233b3593d9ef97180b0073"
+}

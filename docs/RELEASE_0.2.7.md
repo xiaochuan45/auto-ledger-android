@@ -25,16 +25,16 @@
 |---|---|
 | 下载 | [APK](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.7/auto-ledger-prototype.apk) / [发布页](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.7) |
 | 生产源码 | [`7e3878614882f4481391c5a41252c40344d0a45b`](https://github.com/xiaochuan45/auto-ledger-android/commit/7e3878614882f4481391c5a41252c40344d0a45b) |
-| 验证源码 | [`a8ab09421664311055a4a65c5b3eda3e57c510c7`](https://github.com/xiaochuan45/auto-ledger-android/commit/a8ab09421664311055a4a65c5b3eda3e57c510c7)，只改测试及验证脚本，生产代码和 APK 保持不变 |
+| 验证源码 | 准确签名包使用 [`a8ab094`](https://github.com/xiaochuan45/auto-ledger-android/commit/a8ab09421664311055a4a65c5b3eda3e57c510c7)；最终源码校验使用 [`78b5f3d`](https://github.com/xiaochuan45/auto-ledger-android/commit/78b5f3dc646bc60f529cca05890b50f590984a70)，仅改测试及脚本，生产代码和 APK 不变 |
 | APK 版本、大小 | `0.2.7-prototype` / code9；7,171,482 bytes |
 | APK SHA-256 | `e99faa4c5b4dbdfb738760fed5073bf8a7b2041c6d253892f55af531e2478e20` |
 | 签名证书 SHA-256 | `0e2a128391be8ae3d39140ed5d2cd7de8256d62b19233b3593d9ef97180b0073`，与旧版相同 |
 | 本地验证 | JVM 95 项、Python 10 项、构建、Lint、最终签名包审计通过 |
 | 生产源码矩阵 | [run 38872453856](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38872453856) 成功：API 26 实际执行 47 项，API 35、36 各 48 项通过；API 29+ shell 通知用例在 API 26 按 SDK 条件不执行 |
-| 最终验证源码矩阵 | [run 38874389323](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38874389323) 等待收尾 |
+| 最终验证源码矩阵 | [run 38875428787](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38875428787) 成功：API 26 实际执行 47 项，API 35、36 各 48 项通过 |
 | 准确签名 APK | [run 38874549930](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38874549930) 成功：API 35 普通 48 项；公开旧 code8 种子、旧版新进程基线、覆盖准确 code9 后的保留验证各 1 项通过 |
 | 权限与证据 | [最终签名包审计](evidence/0.2.7-prototype/permissions-audit.md) / [artifact 12034479394](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38874549930/artifacts/12034479394)，无联网、截图、全部窗口权限 |
-| 公开下载 | 等待源码矩阵完成后发布并核对公开文件 |
+| 公开下载 | APK 与校验文件均 HTTP 200；公开下载 APK 与云端被测的最终签名文件逐字节一致 |
 | 用户手机 | 0.2.7 待安装验证；真实微信字段、保存去重、新付款自动入账及后台运行均未通过 |
 
 新增回归覆盖不可见结构根下的可见虚构账单、不可见字段不能补齐栏目、整树不可见仍无正文、异包/窗口/敏感容器拒绝，以及新请求清除旧检查。虚构节点通过本机测试 Activity 的无障碍回调构造，不打开微信或拼多多，不代表用户手机已通过。
