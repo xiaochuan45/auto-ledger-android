@@ -5,6 +5,10 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val ledgerDelivery = java.util.Properties().apply {
+    rootProject.file("config/delivery.properties").inputStream().use { load(it) }
+}
+
 android {
     namespace = "io.github.xiaochuan45.autoledger"
     compileSdk = 35
@@ -14,8 +18,9 @@ android {
         applicationId = "io.github.xiaochuan45.autoledger"
         minSdk = 26
         targetSdk = 35
-        versionCode = providers.gradleProperty("ledgerVersionCode").orNull?.toInt() ?: 2
-        versionName = "0.2.0-prototype"
+        versionCode = providers.gradleProperty("ledgerVersionCode").orNull?.toInt()
+            ?: ledgerDelivery.getProperty("current.versionCode").toInt()
+        versionName = ledgerDelivery.getProperty("current.versionName")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

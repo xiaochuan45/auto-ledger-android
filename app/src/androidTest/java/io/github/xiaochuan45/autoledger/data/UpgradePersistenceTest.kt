@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.xiaochuan45.autoledger.capture.CapturePreferences
 import io.github.xiaochuan45.autoledger.core.CaptureSource
 import io.github.xiaochuan45.autoledger.core.EntryKind
 import io.github.xiaochuan45.autoledger.core.LedgerDraft
@@ -30,6 +31,11 @@ class UpgradePersistenceTest {
 
     @Test fun seedBeforeUpgrade() = runBlocking {
         context.deleteDatabase("ledger.db")
+        CapturePreferences(context).apply {
+            setEnabled(true)
+            setChannelEnabled(PaymentChannel.WECHAT, false)
+            setChannelEnabled(PaymentChannel.ALIPAY, true)
+        }
         val database = open()
         try {
             val repository = LedgerRepository(database) { now }
@@ -50,6 +56,10 @@ class UpgradePersistenceTest {
     @Test fun dataSurvivesUpgrade() = runBlocking {
         val database = open()
         try {
+            val settings = CapturePreferences(context).read()
+            assertTrue("The update must preserve the user's opt-in", settings.enabled)
+            assertTrue("The update must not re-enable a disabled channel", !settings.wechatEnabled)
+            assertTrue("The update must preserve the other channel", settings.alipayEnabled)
             val repository = LedgerRepository(database) { now }
             val all = database.ledgerDao().allRecords()
             assertEquals("Run seedBeforeUpgrade before installing the update APK", 3, all.size)
@@ -74,6 +84,7 @@ class UpgradePersistenceTest {
         } finally {
             database.close()
             context.deleteDatabase("ledger.db")
+            CapturePreferences(context).setEnabled(false)
         }
     }
 

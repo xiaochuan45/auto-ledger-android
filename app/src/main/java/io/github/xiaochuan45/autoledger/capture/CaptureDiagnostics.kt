@@ -2,10 +2,14 @@ package io.github.xiaochuan45.autoledger.capture
 
 import io.github.xiaochuan45.autoledger.core.CaptureSource
 import io.github.xiaochuan45.autoledger.core.PaymentChannel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 enum class CaptureFailure {
     NOTIFICATION_READ, ACCESSIBILITY_READ, PARSE_OR_STORAGE, SYSTEM_SETTINGS,
     SKIPPED_INCOMPLETE, QUEUE_FULL,
+    NOTIFICATION_REBIND,
 }
 
 /** Process-local diagnostics only. No source text, title, merchant, amount or exception is retained. */
@@ -17,6 +21,8 @@ data class CaptureDiagnosticSnapshot(
     val lastSource: CaptureSource? = null,
     val lastObservedAt: Long? = null,
     val lastFailure: CaptureFailure? = null,
+    val notificationReconnectRequests: Long = 0,
+    val lastNotificationReconnectAt: Long? = null,
 )
 
 object CaptureDiagnostics {
@@ -41,11 +47,31 @@ object CaptureDiagnostics {
         current = current.copy(failureCount = current.failureCount.incrementSafely(), lastFailure = reason)
     }
 
+    @Synchronized internal fun notificationReconnectRequested(at: Long) {
+        current = current.copy(
+            notificationReconnectRequests = current.notificationReconnectRequests.incrementSafely(),
+            lastNotificationReconnectAt = at,
+        )
+    }
+
     private fun Long.incrementSafely(): Long = if (this == Long.MAX_VALUE) this else this + 1
 }
 
 /** Binding is an observation in this process, not a promise that Android will keep it running. */
+data class CaptureConnectionSnapshot(
+    val notificationConnected: Boolean = false,
+    val accessibilityConnected: Boolean = false,
+)
+
 internal object CaptureServiceConnections {
-    @Volatile var notificationConnected = false
-    @Volatile var accessibilityConnected = false
+    private val mutableState = MutableStateFlow(CaptureConnectionSnapshot())
+    val changes = mutableState.asStateFlow()
+
+    var notificationConnected: Boolean
+        get() = mutableState.value.notificationConnected
+        set(value) { mutableState.update { it.copy(notificationConnected = value) } }
+
+    var accessibilityConnected: Boolean
+        get() = mutableState.value.accessibilityConnected
+        set(value) { mutableState.update { it.copy(accessibilityConnected = value) } }
 }

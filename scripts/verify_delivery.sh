@@ -6,6 +6,8 @@ delivery_dir="${1:?Usage: verify_delivery.sh DIRECTORY}"
 app_id='io.github.xiaochuan45.autoledger'
 runner="${app_id}.test/androidx.test.runner.AndroidJUnitRunner"
 upgrade_class="${app_id}.data.UpgradePersistenceTest"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+read -r previous_version current_version < <(python3 "$script_dir/delivery_config.py" --codes)
 mkdir -p "$delivery_dir/emulator-results"
 
 instrument() {
@@ -25,23 +27,34 @@ if (not re.search(r"OK \([1-9][0-9]* tests?\)", text)
 PY
 }
 
-# The emulator is isolated and contains only fictional test data. The ordinary test
-# suite must not accidentally run the order-dependent upgrade fixture methods.
-adb install "$delivery_dir/auto-ledger-prototype.apk"
+# The emulator is isolated and contains only fictional data. Seed only the stable
+# upgrade fixture on the exact previously published APK: ordinary current tests
+# may reference recovery classes that do not exist in that older application.
+adb install "$delivery_dir/verification-previous.apk"
 adb install -t "$delivery_dir/verification-instrumentation.apk"
-instrument release-suite -e notClass "$upgrade_class"
-instrument seed-before-upgrade -e class "$upgrade_class#seedBeforeUpgrade"
-adb shell am force-stop "$app_id"
-adb install -r "$delivery_dir/verification-upgrade.apk" | tee "$delivery_dir/emulator-results/upgrade-install.txt"
-instrument verify-after-upgrade -e class "$upgrade_class#dataSurvivesUpgrade"
-adb shell dumpsys package "$app_id" > "$delivery_dir/emulator-results/installed-package.txt"
-python3 - "$delivery_dir/emulator-results/installed-package.txt" <<'PY'
+adb shell dumpsys package "$app_id" > "$delivery_dir/emulator-results/previous-installed-package.txt"
+python3 - "$delivery_dir/emulator-results/previous-installed-package.txt" "$previous_version" <<'PY'
 import pathlib
 import re
 import sys
 
 text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
-if not re.search(r"\bversionCode=3\b", text):
-    raise SystemExit("The installed app is not the versionCode=3 upgrade fixture")
+if not re.search(r"\bversionCode=" + re.escape(sys.argv[2]) + r"\b", text):
+    raise SystemExit("The installed app is not the pinned previous release")
 PY
-echo 'Signed delivery APK tests and data-preserving versionCode 2 → 3 update passed.'
+instrument seed-before-upgrade -e class "$upgrade_class#seedBeforeUpgrade"
+adb shell am force-stop "$app_id"
+adb install -r "$delivery_dir/auto-ledger-prototype.apk" | tee "$delivery_dir/emulator-results/upgrade-install.txt"
+instrument verify-after-upgrade -e class "$upgrade_class#dataSurvivesUpgrade"
+instrument release-suite -e notClass "$upgrade_class"
+adb shell dumpsys package "$app_id" > "$delivery_dir/emulator-results/installed-package.txt"
+python3 - "$delivery_dir/emulator-results/installed-package.txt" "$current_version" <<'PY'
+import pathlib
+import re
+import sys
+
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+if not re.search(r"\bversionCode=" + re.escape(sys.argv[2]) + r"\b", text):
+    raise SystemExit("The installed app is not the exact current delivery version")
+PY
+echo "Signed delivery APK tests and data-preserving published versionCode $previous_version → $current_version update passed."

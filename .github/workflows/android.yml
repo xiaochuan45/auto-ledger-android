@@ -177,18 +177,18 @@ jobs:
         run: |
           [[ "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" == true ]] || { echo 'Staging upload requires an existing draft release'; exit 1; }
           mkdir staged-delivery
-          for name in auto-ledger-prototype.apk auto-ledger-prototype.apk.sha256 verification-instrumentation.apk verification-upgrade.apk; do
+          for name in auto-ledger-prototype.apk auto-ledger-prototype.apk.sha256 verification-instrumentation.apk verification-previous.apk; do
             [[ -f "staging/$name" && ! -L "staging/$name" ]] || { echo "Invalid staging file: $name"; exit 1; }
             cp -- "staging/$name" "staged-delivery/$name"
           done
           python3 scripts/verify_delivery_signatures.py --directory staged-delivery --expected-cert-sha256 "$CERTIFICATE_SHA256"
           python3 scripts/verify_apk.py --apk staged-delivery/auto-ledger-prototype.apk --output-dir staged-delivery/audit --build-type release --expected-cert-sha256 "$CERTIFICATE_SHA256"
-          python3 scripts/verify_apk.py --apk staged-delivery/verification-upgrade.apk --output-dir staged-delivery/upgrade-audit --build-type release --version-code 3 --expected-cert-sha256 "$CERTIFICATE_SHA256"
+          python3 scripts/verify_apk.py --apk staged-delivery/verification-previous.apk --output-dir staged-delivery/previous-audit --build-type release --release-role previous --expected-cert-sha256 "$CERTIFICATE_SHA256"
           gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber \
             staged-delivery/auto-ledger-prototype.apk \
             staged-delivery/auto-ledger-prototype.apk.sha256 \
             staged-delivery/verification-instrumentation.apk \
-            staged-delivery/verification-upgrade.apk
+            staged-delivery/verification-previous.apk
 
       - name: Download and audit the draft's exact signed APKs (without rebuilding)
         env:
@@ -201,15 +201,15 @@ jobs:
             --pattern auto-ledger-prototype.apk \
             --pattern auto-ledger-prototype.apk.sha256 \
             --pattern verification-instrumentation.apk \
-            --pattern verification-upgrade.apk
+            --pattern verification-previous.apk
           python3 scripts/verify_delivery_signatures.py --directory delivery --expected-cert-sha256 "$CERTIFICATE_SHA256"
           python3 scripts/verify_apk.py --apk delivery/auto-ledger-prototype.apk --output-dir delivery/audit --build-type release --expected-cert-sha256 "$CERTIFICATE_SHA256"
-          python3 scripts/verify_apk.py --apk delivery/verification-upgrade.apk --output-dir delivery/upgrade-audit --build-type release --version-code 3 --expected-cert-sha256 "$CERTIFICATE_SHA256"
+          python3 scripts/verify_apk.py --apk delivery/verification-previous.apk --output-dir delivery/previous-audit --build-type release --release-role previous --expected-cert-sha256 "$CERTIFICATE_SHA256"
 
       - name: Confirm uploaded and downloaded staging files have identical bytes
         if: inputs.delivery_ref != ''
         run: |
-          for name in auto-ledger-prototype.apk auto-ledger-prototype.apk.sha256 verification-instrumentation.apk verification-upgrade.apk; do
+          for name in auto-ledger-prototype.apk auto-ledger-prototype.apk.sha256 verification-instrumentation.apk verification-previous.apk; do
             cmp -- "staged-delivery/$name" "delivery/$name"
           done
 
@@ -243,11 +243,11 @@ jobs:
           name: signed-delivery-verification-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             delivery/audit/
-            delivery/upgrade-audit/
+            delivery/previous-audit/
             delivery/delivery-signatures.json
             delivery/emulator-results/
             staged-delivery/audit/
-            staged-delivery/upgrade-audit/
+            staged-delivery/previous-audit/
             staged-delivery/delivery-signatures.json
           if-no-files-found: warn
           retention-days: 30

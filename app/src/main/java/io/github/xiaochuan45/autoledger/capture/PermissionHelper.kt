@@ -7,8 +7,11 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
+import android.service.notification.NotificationListenerService
 import android.view.accessibility.AccessibilityManager
+import kotlinx.coroutines.flow.StateFlow
 
 data class PermissionSnapshot(
     val notificationAccess: Boolean,
@@ -18,6 +21,9 @@ data class PermissionSnapshot(
 )
 
 object PermissionHelper {
+    /** Updated by actual service callbacks, including a connection completed after Activity.onResume. */
+    val connectionState: StateFlow<CaptureConnectionSnapshot> = CaptureServiceConnections.changes
+
     fun snapshot(context: Context): PermissionSnapshot {
         val notificationComponent = ComponentName(context, LedgerNotificationService::class.java)
         val notificationAccess = try {
@@ -57,6 +63,37 @@ object PermissionHelper {
             if (launch(context, detail)) return true
         }
         return launch(context, Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+    }
+
+    /** Explicit recovery, without changing authorization or claiming synchronous success. */
+    fun recoverNotifications(context: Context): NotificationRecoveryResult =
+        requestNotificationRecovery(context, automatic = false)
+
+    /** Call once when the app enters the foreground; this method starts no timers or background work. */
+    fun maybeRecoverNotificationsOnForeground(context: Context): NotificationRecoveryResult =
+        requestNotificationRecovery(context, automatic = true)
+
+    /** One event-driven attempt shares the foreground gate; never call this from a timer. */
+    internal fun maybeRecoverNotificationsAfterDisconnect(context: Context): NotificationRecoveryResult =
+        requestNotificationRecovery(context, automatic = true)
+
+    private fun requestNotificationRecovery(context: Context, automatic: Boolean): NotificationRecoveryResult {
+        val permissions = snapshot(context)
+        val settings = CapturePreferences(context).read()
+        NotificationRecovery.gate.acquire(
+            notificationAccess = permissions.notificationAccess,
+            captureEnabled = settings.enabled && (settings.wechatEnabled || settings.alipayEnabled),
+            connected = permissions.notificationConnected,
+            automatic = automatic,
+            elapsedRealtime = SystemClock.elapsedRealtime(),
+        )?.let { return it }
+        return NotificationRecovery.submitRequest(
+            requestRebind = {
+                // API 24+, supported by our API 26 minimum. Android/OEM retains final binding control.
+                NotificationListenerService.requestRebind(ComponentName(context, LedgerNotificationService::class.java))
+            },
+            requestedAt = System::currentTimeMillis,
+        )
     }
 
     fun openAccessibility(context: Context): Boolean = launch(context, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))

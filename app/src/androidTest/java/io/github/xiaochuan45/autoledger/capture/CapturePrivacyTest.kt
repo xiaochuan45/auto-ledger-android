@@ -113,6 +113,36 @@ class CapturePrivacyTest {
         if (!snapshot.accessibilityAccess) assertFalse(snapshot.accessibilityConnected)
     }
 
+    @Test fun recoveryCannotBypassOptInAndOnlyConnectionCallbackUpdatesLiveState() {
+        val preferences = CapturePreferences(context)
+        val beforeRequests = CaptureDiagnostics.snapshot().notificationReconnectRequests
+        val result = PermissionHelper.recoverNotifications(context)
+        assertTrue(result == NotificationRecoveryResult.ACCESS_NOT_GRANTED ||
+            result == NotificationRecoveryResult.CAPTURE_DISABLED)
+        assertEquals(beforeRequests, CaptureDiagnostics.snapshot().notificationReconnectRequests)
+
+        preferences.setEnabled(true)
+        preferences.setChannelEnabled(PaymentChannel.WECHAT, false)
+        preferences.setChannelEnabled(PaymentChannel.ALIPAY, false)
+        val noChannels = PermissionHelper.maybeRecoverNotificationsOnForeground(context)
+        assertTrue(noChannels == NotificationRecoveryResult.ACCESS_NOT_GRANTED ||
+            noChannels == NotificationRecoveryResult.CAPTURE_DISABLED)
+        assertEquals(beforeRequests, CaptureDiagnostics.snapshot().notificationReconnectRequests)
+
+        val previous = CaptureServiceConnections.notificationConnected
+        try {
+            CaptureServiceConnections.notificationConnected = false
+            assertFalse(PermissionHelper.connectionState.value.notificationConnected)
+            // Exercise the callback implementation without binding to or reading any notification.
+            LedgerNotificationService().onListenerConnected()
+            assertTrue(PermissionHelper.connectionState.value.notificationConnected)
+        } finally {
+            CaptureServiceConnections.notificationConnected = previous
+            preferences.setChannelEnabled(PaymentChannel.WECHAT, true)
+            preferences.setChannelEnabled(PaymentChannel.ALIPAY, true)
+        }
+    }
+
     private fun fictionalNotification(title: String): Notification =
         Notification.Builder(context, "fictional-local-test")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)

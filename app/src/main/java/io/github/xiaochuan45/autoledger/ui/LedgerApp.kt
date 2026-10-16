@@ -58,6 +58,7 @@ import io.github.xiaochuan45.autoledger.BuildConfig
 import io.github.xiaochuan45.autoledger.capture.CapturePreferences
 import io.github.xiaochuan45.autoledger.capture.CaptureDiagnostics
 import io.github.xiaochuan45.autoledger.capture.PermissionHelper
+import io.github.xiaochuan45.autoledger.capture.NotificationRecoveryResult
 import io.github.xiaochuan45.autoledger.core.Amounts
 import io.github.xiaochuan45.autoledger.core.EntryKind
 import io.github.xiaochuan45.autoledger.core.LedgerDraft
@@ -90,7 +91,7 @@ internal fun channelLabel(channel: String): String = PaymentChannel.entries.firs
 internal fun amountLabel(amountMinor: Long?): String = amountMinor?.let { "${Amounts.formatMinor(it)} 元" } ?: "金额待核对"
 
 @Composable
-fun LedgerApp(resumeCount: Int) {
+fun LedgerApp(resumeCount: Int, foregroundRecovery: NotificationRecoveryResult? = null) {
     val context = LocalContext.current
     val repository = remember(context) { LedgerRepository.get(context) }
     val records by repository.records.collectAsState(initial = emptyList())
@@ -161,7 +162,7 @@ fun LedgerApp(resumeCount: Int) {
         when (selected) {
             0 -> BillsPage(records, filter, { filter = it }, padding) { detailId = it.id }
             1 -> StatisticsPage(records, padding)
-            else -> SettingsPage(resumeCount, padding)
+            else -> SettingsPage(resumeCount, foregroundRecovery, padding)
         }
     }
 
@@ -322,39 +323,59 @@ private fun StatisticsPage(records: List<LedgerRecord>, padding: PaddingValues) 
 }
 
 @Composable
-private fun SettingsPage(resumeCount: Int, padding: PaddingValues) {
+private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecoveryResult?, padding: PaddingValues) {
     val context = LocalContext.current
     val preferences = remember(context) { CapturePreferences(context) }
     var settings by remember(resumeCount) { mutableStateOf(preferences.read()) }
     var refreshCount by remember { mutableIntStateOf(0) }
-    val permissions = remember(resumeCount, settings, refreshCount) { PermissionHelper.snapshot(context) }
-    val diagnostics = remember(resumeCount, settings, refreshCount) { CaptureDiagnostics.snapshot() }
+    val connections by PermissionHelper.connectionState.collectAsState()
+    val permissions = remember(resumeCount, settings, refreshCount, connections) { PermissionHelper.snapshot(context) }
+    val diagnostics = remember(resumeCount, settings, refreshCount, connections) { CaptureDiagnostics.snapshot() }
+    var recoveryResult by remember(resumeCount, foregroundRecovery) {
+        mutableStateOf(foregroundRecovery?.takeUnless {
+            it == NotificationRecoveryResult.ACCESS_NOT_GRANTED || it == NotificationRecoveryResult.CAPTURE_DISABLED
+        })
+    }
     var openError by remember { mutableStateOf(false) }
     Page("设置与状态", "数据留在手机，权限由你掌握。", padding) {
         SettingsCard("自动记账") {
             SettingSwitch("自动记账总开关", "默认关闭，开启后仅处理所选渠道的必要交易信息。", settings.enabled, "capture_enabled") {
                 preferences.setEnabled(it)
                 settings = preferences.read()
+                if (it) recoveryResult = PermissionHelper.maybeRecoverNotificationsOnForeground(context)
             }
             HorizontalDivider()
             PaymentChannel.entries.forEach { channel ->
                 SettingSwitch(channel.label, "页面及交易通知", if (channel == PaymentChannel.WECHAT) settings.wechatEnabled else settings.alipayEnabled, "channel_${channel.name}") {
+                    val allChannelsWereOff = !settings.wechatEnabled && !settings.alipayEnabled
                     preferences.setChannelEnabled(channel, it)
                     settings = preferences.read()
+                    if (it && allChannelsWereOff) recoveryResult = PermissionHelper.maybeRecoverNotificationsOnForeground(context)
                 }
             }
             Text(if (settings.enabled) "已开启识别。下方系统权限与服务状态仍需检查。" else "当前已暂停自动识别，手动补记仍可使用。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
         }
         SettingsCard("系统权限与服务") {
-            PermissionRow("通知使用权", permissions.notificationAccess, permissions.notificationConnected) {
+            PermissionRow("通知使用权", permissions.notificationAccess, permissions.notificationConnected, openLabel = "打开通知权限设置", statusTag = "notification_connection_status") {
                 if (!PermissionHelper.openNotifications(context)) openError = true
             }
+            OutlinedButton(
+                onClick = {
+                    recoveryResult = PermissionHelper.recoverNotifications(context)
+                    refreshCount++
+                },
+                modifier = Modifier.fillMaxWidth().testTag("recover_notification_listener"),
+            ) { Text("尝试恢复通知监听") }
+            recoveryResult?.let { result ->
+                Text(notificationRecoveryMessage(result, permissions.notificationConnected), modifier = Modifier.testTag("notification_recovery_result"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            }
+            Text("恢复请求已提交不等于服务已连接，连接状态以系统回调为准。恢复不会补抓过去漏记的账单，请核对并手动补记。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
             HorizontalDivider()
-            PermissionRow("无障碍服务", permissions.accessibilityAccess, permissions.accessibilityConnected) {
+            PermissionRow("无障碍服务", permissions.accessibilityAccess, permissions.accessibilityConnected, statusTag = "accessibility_connection_status") {
                 if (!PermissionHelper.openAccessibility(context)) openError = true
             }
             TextButton(onClick = { refreshCount++ }) { Text("刷新权限状态") }
-            Text("已授权与服务已连接是不同状态。系统可能限制后台运行，状态不能保证永不漏记。返回此页会刷新。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            Text("已授权与服务已连接是不同状态。系统可能限制后台运行，状态不能保证永不漏记。服务连接变化会自动更新，返回此页也会刷新系统权限。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
             OutlinedButton(onClick = { if (!PermissionHelper.openBatterySettings(context)) openError = true }, modifier = Modifier.fillMaxWidth()) { Text("检查电池与后台限制") }
             OutlinedButton(onClick = { if (!PermissionHelper.openAppSettings(context)) openError = true }, modifier = Modifier.fillMaxWidth()) { Text("打开应用系统设置") }
             Text("不同品牌手机可在系统应用管理中检查电池使用、允许后台活动等选项，名称随品牌和系统版本变化。若服务断开，检查开关或在系统设置中重新启用。", style = MaterialTheme.typography.bodySmall)
@@ -362,12 +383,15 @@ private fun SettingsPage(resumeCount: Int, padding: PaddingValues) {
         SettingsCard("本次运行诊断") {
             Text("本次进程运行监听到 ${diagnostics.observedCount} 次\n处理完成 ${diagnostics.parsedCount} 次（含重复检查）\n异常 / 未处理 ${diagnostics.failureCount} 次", style = MaterialTheme.typography.bodyMedium)
             Text("这些是处理事件次数，不是新增账单笔数。计数仅保留在内存中，应用进程重启后归零；服务已连接仍不能保证不漏记。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            Text("通知监听恢复请求 ${diagnostics.notificationReconnectRequests} 次", style = MaterialTheme.typography.bodySmall)
+            diagnostics.lastNotificationReconnectAt?.let { Text("最近请求时间：${formatTime(it)}", style = MaterialTheme.typography.bodySmall) }
             diagnostics.lastSource?.let { source ->
                 Text("最近监听：${diagnostics.lastChannel?.label ?: "渠道未知"} · ${when (source.name) { "NOTIFICATION" -> "交易通知"; "ACCESSIBILITY" -> "付款页面"; else -> "其他来源" }}", style = MaterialTheme.typography.bodySmall)
             }
             diagnostics.lastObservedAt?.let { Text("监听时间：${formatTime(it)}", style = MaterialTheme.typography.bodySmall) }
             diagnostics.lastFailure?.let { failure ->
                 val description = when (failure.name) {
+                    "NOTIFICATION_REBIND" -> "通知监听恢复请求未能发起。请检查通知使用权和后台限制；缺失账单请手动补记。"
                     "NOTIFICATION_READ" -> "通知读取未完成。请检查上方通知使用权及服务状态，核对账单，缺失时手动补记。"
                     "ACCESSIBILITY_READ" -> "付款页面读取未完成。请检查上方无障碍权限及服务状态，核对账单，缺失时手动补记。"
                     "PARSE_OR_STORAGE" -> "识别或本地保存未完成。请返回账单核对，缺失时手动补记；若反复发生，可暂停自动记账后重新开启。"
@@ -391,12 +415,22 @@ private fun SettingsPage(resumeCount: Int, padding: PaddingValues) {
     if (openError) AlertDialog(onDismissRequest = { openError = false }, title = { Text("未能打开系统页面") }, text = { Text("请从手机系统设置 → 应用管理找到本地账本，检查权限、通知使用权、无障碍及电池设置。") }, confirmButton = { TextButton(onClick = { openError = false }) { Text("知道了") } })
 }
 
+private fun notificationRecoveryMessage(result: NotificationRecoveryResult, connected: Boolean): String = when (result) {
+    NotificationRecoveryResult.REQUESTED -> if (connected) "恢复请求已提交，现已收到系统连接回调。" else "已提交恢复请求，正在等待系统连接；请观察上方连接状态。"
+    NotificationRecoveryResult.ALREADY_CONNECTED -> if (connected) "当前已收到系统连接回调，无需重复恢复。" else "服务在检查后又断开，请重新检查权限或尝试恢复。"
+    NotificationRecoveryResult.ACCESS_NOT_GRANTED -> "尚未授予通知使用权，未发起恢复。请先打开通知权限设置。"
+    NotificationRecoveryResult.CAPTURE_DISABLED -> "自动记账或全部支付渠道已关闭，未发起恢复。请先开启总开关和至少一个渠道。"
+    NotificationRecoveryResult.THROTTLED -> "近期已尝试恢复，本次未重复请求。请稍后刷新状态；持续未连接时检查系统权限或后台限制。"
+    NotificationRecoveryResult.ALREADY_REQUESTED -> "本次断开后已尝试过自动恢复，本次未重复请求。仍未连接时可检查系统权限，或稍后手动尝试恢复。"
+    NotificationRecoveryResult.FAILED -> "恢复请求未能发起。请打开通知权限设置检查；仍未连接时可在系统中关闭再开启通知使用权。"
+}
+
 @Composable
-private fun PermissionRow(label: String, authorized: Boolean, connected: Boolean, onOpen: () -> Unit) {
+private fun PermissionRow(label: String, authorized: Boolean, connected: Boolean, openLabel: String = "检查 / 恢复$label", statusTag: String = "permission_status", onOpen: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(label, style = MaterialTheme.typography.titleSmall)
-        Text("${if (authorized) "已授权" else "未授权"} · ${if (connected) "服务已连接" else "服务未连接"}", style = MaterialTheme.typography.bodySmall, color = if (authorized && connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-        TextButton(onClick = onOpen) { Text("检查 / 恢复$label") }
+        Text("${if (authorized) "已授权" else "未授权"} · ${if (connected) "服务已连接" else "服务未连接"}", modifier = Modifier.testTag(statusTag), style = MaterialTheme.typography.bodySmall, color = if (authorized && connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+        TextButton(onClick = onOpen) { Text(openLabel) }
     }
 }
 

@@ -1,11 +1,16 @@
 package io.github.xiaochuan45.autoledger
 
+import android.content.ComponentName
+
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -16,7 +21,12 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
+import androidx.test.platform.app.InstrumentationRegistry
 import io.github.xiaochuan45.autoledger.capture.CapturePreferences
+import io.github.xiaochuan45.autoledger.capture.CaptureDiagnostics
+import io.github.xiaochuan45.autoledger.capture.LedgerNotificationService
+import io.github.xiaochuan45.autoledger.capture.PermissionHelper
 import io.github.xiaochuan45.autoledger.core.CaptureSource
 import io.github.xiaochuan45.autoledger.core.EntryKind
 import io.github.xiaochuan45.autoledger.core.ParsedPayment
@@ -63,6 +73,46 @@ class LaunchSmokeTest {
         compose.onNodeWithText("自动记账总开关").assertIsDisplayed()
         compose.onNodeWithText("账单").performClick()
         compose.onNodeWithText("我的账单").assertIsDisplayed()
+    }
+
+    @Test
+    fun recoveryWithoutAuthorizationExplainsThatNoRequestWasSent() {
+        org.junit.Assert.assertFalse("This test requires the clean emulator's ungranted notification access", PermissionHelper.snapshot(compose.activity).notificationAccess)
+        val beforeRequests = CaptureDiagnostics.snapshot().notificationReconnectRequests
+        compose.onNodeWithText("设置").performClick()
+        compose.onNodeWithTag("recover_notification_listener").performScrollTo().performClick()
+        compose.onNodeWithTag("notification_recovery_result").performScrollTo()
+            .assertTextContains("尚未授予通知使用权，未发起恢复。请先打开通知权限设置。")
+        compose.onNodeWithTag("notification_connection_status")
+            .assertTextContains("未授权 · 服务未连接")
+        org.junit.Assert.assertEquals(beforeRequests, CaptureDiagnostics.snapshot().notificationReconnectRequests)
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = 29)
+    fun notificationConnectionChangesUpdateTheOpenSettingsPage() {
+        // A real service bind/unbind proves the page observes callbacks after its initial snapshot.
+        // cmd notification is used only by the clean CI emulator; capture stays disabled throughout.
+        org.junit.Assert.assertFalse("Do not change an existing user's notification grant", PermissionHelper.snapshot(compose.activity).notificationAccess)
+        val component = ComponentName(compose.activity, LedgerNotificationService::class.java).flattenToString()
+        compose.onNodeWithText("设置").performClick()
+        compose.onNodeWithTag("notification_connection_status").performScrollTo()
+            .assertTextContains("未授权 · 服务未连接")
+        try {
+            shellCommand("cmd notification allow_listener $component")
+            compose.waitUntil(timeoutMillis = 10_000) {
+                compose.onAllNodes(hasTestTag("notification_connection_status") and hasText("已授权 · 服务已连接")).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithTag("notification_connection_status").assertTextContains("已授权 · 服务已连接")
+            org.junit.Assert.assertFalse(CapturePreferences(compose.activity).read().enabled)
+            shellCommand("cmd notification disallow_listener $component")
+            compose.waitUntil(timeoutMillis = 10_000) {
+                compose.onAllNodes(hasTestTag("notification_connection_status") and hasText("服务未连接", substring = true)).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithTag("notification_connection_status").assertTextContains("服务未连接", substring = true)
+        } finally {
+            shellCommand("cmd notification disallow_listener $component")
+        }
     }
 
     @Test
@@ -212,6 +262,12 @@ class LaunchSmokeTest {
             val saved = repository.records.first().single { it.merchant == merchant }
             org.junit.Assert.assertEquals(199L, saved.amountMinor)
             org.junit.Assert.assertEquals(RecordStatus.CONFIRMED.name, saved.status)
+        }
+    }
+
+    private fun shellCommand(command: String) {
+        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command).use { descriptor ->
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
         }
     }
 

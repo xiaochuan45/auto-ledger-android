@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the exact delivery, instrumentation, and upgrade APKs before emulator use."""
+"""Check the delivery, instrumentation, and pinned previous release before emulator use."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 from verify_apk import ANDROID, APPLICATION_ID, require, run, sdk_tool, verified_certificate
+from delivery_config import load_delivery_config
 
 
 def main() -> int:
@@ -19,6 +20,7 @@ def main() -> int:
     parser.add_argument("--directory", type=Path, required=True)
     parser.add_argument("--expected-cert-sha256", required=True)
     args = parser.parse_args()
+    config = load_delivery_config()
     expected_certificate = args.expected_cert_sha256.replace(":", "").lower()
     require(len(expected_certificate) == 64 and all(char in "0123456789abcdef" for char in expected_certificate),
             "Expected a public SHA-256 signing certificate fingerprint")
@@ -30,7 +32,7 @@ def main() -> int:
             "Requested certificate does not match the public pin in the main source checkout")
     require(args.directory.is_dir() and not args.directory.is_symlink(), "Delivery directory must be a real directory")
     for name in ("auto-ledger-prototype.apk", "auto-ledger-prototype.apk.sha256",
-                 "verification-instrumentation.apk", "verification-upgrade.apk"):
+                 "verification-instrumentation.apk", "verification-previous.apk"):
         path = args.directory / name
         require(path.is_file() and not path.is_symlink(), f"Delivery input must be a regular, non-symlink file: {name}")
     checksum_text = (args.directory / "auto-ledger-prototype.apk.sha256").read_text(encoding="utf-8")
@@ -40,7 +42,7 @@ def main() -> int:
     require(actual_digest == checksum.group(1).lower(), "Delivery APK SHA-256 does not match its checksum")
     analyzer = sdk_tool("apkanalyzer", "cmdline-tools/latest/bin")
     result = {}
-    for name in ("auto-ledger-prototype.apk", "verification-instrumentation.apk", "verification-upgrade.apk"):
+    for name in ("auto-ledger-prototype.apk", "verification-instrumentation.apk", "verification-previous.apk"):
         apk = args.directory / name
         require(apk.is_file(), f"Missing verification file: {name}")
         certificate, _ = verified_certificate(apk)
@@ -59,9 +61,12 @@ def main() -> int:
                     "Instrumentation must not request network access")
         else:
             require(manifest.get("package") == APPLICATION_ID, "Unexpected delivery application ID")
-            expected_version = "2" if name == "auto-ledger-prototype.apk" else "3"
-            require(manifest.get(ANDROID + "versionCode") == expected_version, "Unexpected delivery/upgrade versionCode")
-            require(manifest.get(ANDROID + "versionName") == "0.2.0-prototype", "Unexpected delivery versionName")
+            expected_version = config.current if name == "auto-ledger-prototype.apk" else config.previous
+            require(manifest.get(ANDROID + "versionCode") == str(expected_version.code), "Unexpected delivery/previous versionCode")
+            require(manifest.get(ANDROID + "versionName") == expected_version.name, "Unexpected delivery/previous versionName")
+            if name == "verification-previous.apk":
+                require(hashlib.sha256(apk.read_bytes()).hexdigest() == config.previous_apk_sha256,
+                        "Previous APK bytes differ from the pinned, publicly released APK")
         result[name] = {"sha256": hashlib.sha256(apk.read_bytes()).hexdigest(), "certificate_sha256": certificate}
     (args.directory / "delivery-signatures.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print("Delivery checksum matches; all three APK signatures match the main checkout's public certificate pin.")

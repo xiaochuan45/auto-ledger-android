@@ -12,6 +12,7 @@ class LedgerNotificationService : NotificationListenerService() {
 
     override fun onCreate() {
         super.onCreate()
+        CaptureServiceConnections.notificationConnected = false
         preferences = CapturePreferences(this)
         dispatcher = CaptureDispatcher(this)
         settingsObserver = preferences.observeChanges { dispatcher.cancelPending() }
@@ -19,6 +20,7 @@ class LedgerNotificationService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        NotificationRecovery.gate.onConnected()
         CaptureServiceConnections.notificationConnected = true
         // Deliberately do not read activeNotifications: installation must not import old messages.
     }
@@ -41,6 +43,9 @@ class LedgerNotificationService : NotificationListenerService() {
         CaptureServiceConnections.notificationConnected = false
         dispatcher.cancelPending()
         super.onListenerDisconnected()
+        // An actual disconnect may be recoverable while our process remains alive. This shares
+        // the foreground once-per-episode/30-second gate; unbind/destroy never start a retry loop.
+        PermissionHelper.maybeRecoverNotificationsAfterDisconnect(this)
     }
 
     override fun onUnbind(intent: Intent?): Boolean {

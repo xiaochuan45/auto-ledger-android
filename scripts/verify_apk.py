@@ -14,6 +14,8 @@ import sys
 import xml.etree.ElementTree as ET
 import zipfile
 
+from delivery_config import load_delivery_config
+
 
 ANDROID = "{http://schemas.android.com/apk/res/android}"
 APPLICATION_ID = "io.github.xiaochuan45.autoledger"
@@ -258,16 +260,26 @@ def main() -> int:
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--application-id", default=APPLICATION_ID)
-    parser.add_argument("--version-code", type=int, default=2)
-    parser.add_argument("--version-name", default="0.2.0-prototype")
+    parser.add_argument("--release-role", choices=("current", "previous"), default="current")
+    parser.add_argument("--version-code", type=int, help="Optional explicit versionCode override")
+    parser.add_argument("--version-name", help="Optional explicit versionName override")
     parser.add_argument("--build-type", choices=("debug", "release"), default="debug")
     parser.add_argument("--unsigned", action="store_true", help="CI-only release build; never an installable delivery")
     parser.add_argument("--expected-cert-sha256", help="Public signing certificate fingerprint, never a private key")
     args = parser.parse_args()
+    config = load_delivery_config()
+    expected = config.current if args.release_role == "current" else config.previous
+    if args.version_code is None:
+        args.version_code = expected.code
+    if args.version_name is None:
+        args.version_name = expected.name
     require(not args.unsigned or args.build_type == "release", "Only release CI builds may skip signature verification")
     require(not args.unsigned or not args.expected_cert_sha256, "An unsigned audit cannot verify a certificate")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     require(args.apk.is_file(), "APK does not exist")
+    if args.release_role == "previous":
+        require(hashlib.sha256(args.apk.read_bytes()).hexdigest() == config.previous_apk_sha256,
+                "Previous APK bytes differ from the pinned, publicly released APK")
     analyzer = sdk_tool("apkanalyzer", "cmdline-tools/latest/bin")
     aapt2 = sdk_tool("aapt2", "build-tools/35.0.0")
     manifest_text = run(analyzer, "manifest", "print", str(args.apk))
