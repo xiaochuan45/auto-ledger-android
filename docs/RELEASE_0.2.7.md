@@ -32,3 +32,6 @@ JVM 95 项、Python 10 项、构建、Lint 已通过；生产源码模拟器 API
 
 
 补强后的 [run 38873330591](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38873330591) 已通过种子、旧版新进程基线及真实覆盖升级三个阶段各 1 项；随后普通 48 项中的 1 项在测试服务初始化阶段失败（`scopeFailureSummaryOnlyContainsFixedLabelsAndCounts`），尚未通过最终交付。模拟夹具原先每页启停实际服务和切换 UiAutomation 抑制状态；改为整个测试类共用同一非抑制连接，类前确认真实服务已连接，类后统一恢复。逐页仍使用新 Activity、销毁 WebView 并清缓存，保留全部字段、隐私、去重断言。生产 APK 不变，后续通过才发布。
+
+
+补强验证源码的 API 36 [run 38873256169](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38873256169) 另出现手动操作测试的金额可见性失败（`LaunchSmokeTest.kt:150`）；节点已存在但测试未先滚动至金额。夹具现于金额展示断言及商户点击前滚动到对应节点，保留可见性断言、真实按钮点击和数据库值验证，不改生产界面或账目逻辑。
