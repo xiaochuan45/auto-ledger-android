@@ -1,6 +1,6 @@
 # 本地账本 · 只读兼容性诊断 0.2.2-prototype
 
-本版用于定位「服务已连接，但付款没有进入解析」的问题，**没有宣称已适配拼多多微信付款**。本轮编译、最终 APK 与覆盖升级验证完成后再公开下载。
+本版用于定位「服务已连接，但付款没有进入解析」的问题，**没有宣称已适配拼多多微信付款**。代码已实现；构建、Lint、58 项 JVM 与 8 项 Python 测试通过。源码模拟器 API 26 实际执行 32 项、API 35 执行 33 项，均通过；准确签名 APK 的 33 项 API 35 测试及旧公开 0.2.1 → 本版覆盖升级的数据保留验证通过。用户手机验证待执行。
 
 版本 `0.2.2-prototype` / code `4`，包名 `io.github.xiaochuan45.autoledger`；直接覆盖已安装的同签名 `0.2.1` / code `3`，不要先卸载或清除数据。
 
@@ -27,8 +27,20 @@
 
 ## 验证与下载
 
-最终源码、CI、准确 APK 哈希、同签名覆盖更新和下载实测在验证完成后补充。本版真机检查尚待用户执行，不能用虚构测试证明真实付款已识别。
+| 项目 | 当前证据 |
+|---|---|
+| 生产源码 | [`0c967f5c09bf57c5531b9ac5a238e0b4ea3d5732`](https://github.com/xiaochuan45/auto-ledger-android/commit/0c967f5c09bf57c5531b9ac5a238e0b4ea3d5732) |
+| APK 大小 | 7,138,714 bytes，约 7.14 MB |
+| APK SHA-256 | `466197679f9f79b8f744696938d669713c549ac98603231865777ea539778fa7` |
+| 证书 SHA-256 | `0e2a128391be8ae3d39140ed5d2cd7de8256d62b19233b3593d9ef97180b0073`，与旧版相同 |
+| 本地规则 / 诊断约束测试 | JVM 58 项、Python 8 项通过；构建与 Lint 通过 |
+| 源码矩阵 | [run 38855218679](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38855218679) 成功：API 26 实际执行 32 项、API 35 执行 33 项；API 29+ 的真实系统通知 shell 测试在 API 26 按 SDK 条件不执行，不计作通过 |
+| 准确签名 APK | [权限及签名严格审计](evidence/0.2.2-prototype/permissions-audit.md)通过；[run 38855285219](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38855285219) 成功：真实旧公开 code3 写入虚构数据 1 项通过 → 准确新 code4 覆盖安装 → 账单、去重及总/渠道开关保留检查 1 项通过；随后 33 项普通测试全部通过 |
+| 签名验证证据附件 | [artifact 12027152672](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38855285219/artifacts/12027152672)（GitHub 登录下载） |
+| 用户手机 | 0.2.2 安装和只读检查全部待测；拼多多微信自动识别尚未通过 |
 
-发布页：[prototype-v0.2.2（待公开）](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.2)。
+公开 APK 与校验文件已实测返回 HTTP 200；APK 下载后与通过测试的签名文件逐字节一致。本版真机检查尚待用户执行，不能用虚构测试证明真实付款已识别。
+
+下载：[auto-ledger-prototype.apk](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.2/auto-ledger-prototype.apk)；[发布页 prototype-v0.2.2](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.2)。
 
 已有实现范围、尚缺的退款关联/完整统计/导入导出/加密备份，以及签名材料保管边界见 [项目状态](https://github.com/xiaochuan45/auto-ledger-android/blob/main/docs/PHASE2_STATUS.md)。试用期间请保留其他账目来源。
