@@ -48,14 +48,28 @@ class LedgerAccessibilityService : AccessibilityService() {
         if (!preferences.isCaptureEnabled(channel)) { clearWindow(); return }
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
-        if (event.windowId < 0) { clearWindow(); return }
-
         val className = event.className?.toString().orEmpty()
         val nowElapsed = SystemClock.elapsedRealtime()
         val trustedClass = CapturePolicy.isPaymentWindow(channel, className)
+        val stateChanged = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+        CaptureDiagnostics.windowEvent(channel, className, stateChanged && trustedClass, recordType = stateChanged)
+        if (CaptureDiagnostics.compatibilityActive()) {
+            clearWindow()
+            CaptureDiagnostics.skipped(CaptureSkip.COMPATIBILITY_ONLY, CaptureSource.ACCESSIBILITY)
+            return
+        }
+        if (event.windowId < 0) {
+            clearWindow()
+            CaptureDiagnostics.skipped(CaptureSkip.WINDOW_ID_MISSING, CaptureSource.ACCESSIBILITY)
+            return
+        }
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             // Entering any unsupported page/dialog invalidates a previously verified payment window.
-            if (!trustedClass) { clearWindow(); return }
+            if (!trustedClass) {
+                clearWindow()
+                CaptureDiagnostics.skipped(CaptureSkip.WINDOW_UNSUPPORTED, CaptureSource.ACCESSIBILITY)
+                return
+            }
             val current = session
             if (current == null || current.channel != channel || current.windowId != event.windowId ||
                 current.screenClass != className || nowElapsed - current.verifiedAtElapsed > SESSION_VALIDITY_MS
@@ -67,7 +81,10 @@ class LedgerAccessibilityService : AccessibilityService() {
                 session = current.copy(verifiedAtElapsed = nowElapsed)
             }
         } else {
-            val current = session ?: return
+            val current = session ?: run {
+                CaptureDiagnostics.skipped(CaptureSkip.WINDOW_UNVERIFIED, CaptureSource.ACCESSIBILITY)
+                return
+            }
             if (current.channel != channel || current.windowId != event.windowId ||
                 nowElapsed - current.verifiedAtElapsed > SESSION_VALIDITY_MS
             ) { clearWindow(); return }
@@ -87,13 +104,17 @@ class LedgerAccessibilityService : AccessibilityService() {
     }
 
     private fun readVerifiedWindow(expected: PaymentWindowSession) {
+        if (CaptureDiagnostics.compatibilityActive()) { clearWindow(); return }
         if (!preferences.isCaptureEnabled(expected.channel) ||
             SystemClock.elapsedRealtime() - expected.verifiedAtElapsed > SESSION_VALIDITY_MS
         ) { clearWindow(); return }
         lastReadElapsed = SystemClock.elapsedRealtime()
         try {
             // Never inspect event.source, event.text, other windows, screenshots or event parcel data.
-            val root = rootInActiveWindow ?: return
+            val root = rootInActiveWindow ?: run {
+                CaptureDiagnostics.skipped(CaptureSkip.ROOT_UNAVAILABLE, CaptureSource.ACCESSIBILITY)
+                return
+            }
             val validRoot = try {
                 root.packageName?.toString() == expected.channel.packageName && root.windowId == expected.windowId
             } catch (_: RuntimeException) {
@@ -103,10 +124,14 @@ class LedgerAccessibilityService : AccessibilityService() {
             if (!validRoot) {
                 releaseNode(root)
                 clearWindow()
+                CaptureDiagnostics.skipped(CaptureSkip.WINDOW_CHANGED, CaptureSource.ACCESSIBILITY)
                 return
             }
-            val texts = collectPaymentText(root, expected.channel.packageName)
-            if (texts.isEmpty()) return
+            val texts = collectPaymentText(root, expected.channel.packageName) ?: return
+            if (texts.isEmpty()) {
+                CaptureDiagnostics.skipped(CaptureSkip.EMPTY_TEXT, CaptureSource.ACCESSIBILITY)
+                return
+            }
             dispatcher.submit(CaptureInput(
                 source = CaptureSource.ACCESSIBILITY,
                 packageName = expected.channel.packageName,
@@ -122,7 +147,7 @@ class LedgerAccessibilityService : AccessibilityService() {
     }
 
     /** Takes ownership of root and releases every obtained node, including exceptional paths. */
-    private fun collectPaymentText(root: AccessibilityNodeInfo, expectedPackage: String): List<String> {
+    private fun collectPaymentText(root: AccessibilityNodeInfo, expectedPackage: String): List<String>? {
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         val texts = TransientTextBuffer()
         var visited = 0
@@ -140,7 +165,10 @@ class LedgerAccessibilityService : AccessibilityService() {
                     val text = node.text
                     val description = node.contentDescription
                     // A payment authorization/verification view is not a receipt. Discard the sample.
-                    if (hasSensitiveText(text) || hasSensitiveText(description)) return emptyList()
+                    if (hasSensitiveText(text) || hasSensitiveText(description)) {
+                        CaptureDiagnostics.skipped(CaptureSkip.SENSITIVE_GUARD, CaptureSource.ACCESSIBILITY)
+                        return null
+                    }
                     texts.add(text)
                     texts.add(description)
                     val available = MAX_NODES - visited - queue.size
@@ -166,7 +194,7 @@ class LedgerAccessibilityService : AccessibilityService() {
             if (queue.isNotEmpty()) texts.markIncomplete()
             if (texts.incomplete) {
                 CaptureDiagnostics.failed(CaptureFailure.SKIPPED_INCOMPLETE)
-                return emptyList()
+                return null
             }
             return texts.toList()
         } finally {

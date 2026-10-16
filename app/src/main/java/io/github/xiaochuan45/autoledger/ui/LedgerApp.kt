@@ -1,5 +1,9 @@
 package io.github.xiaochuan45.autoledger.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.os.Build
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -40,6 +44,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -70,6 +75,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 private val displayTime = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 internal fun formatTime(time: Long): String = Instant.ofEpochMilli(time).atZone(ZoneId.systemDefault()).format(displayTime)
@@ -331,6 +337,12 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
     val connections by PermissionHelper.connectionState.collectAsState()
     val permissions = remember(resumeCount, settings, refreshCount, connections) { PermissionHelper.snapshot(context) }
     val diagnostics = remember(resumeCount, settings, refreshCount, connections) { CaptureDiagnostics.snapshot() }
+    val compatibility = remember(resumeCount, refreshCount) { CaptureDiagnostics.compatibilitySnapshot() }
+    LaunchedEffect(compatibility.active) {
+        if (compatibility.active) { delay(compatibility.remainingMillis + 50L); refreshCount++ }
+    }
+    var reportCopied by remember { mutableStateOf(false) }
+    var copyError by remember { mutableStateOf(false) }
     var recoveryResult by remember(resumeCount, foregroundRecovery) {
         mutableStateOf(foregroundRecovery?.takeUnless {
             it == NotificationRecoveryResult.ACCESS_NOT_GRANTED || it == NotificationRecoveryResult.CAPTURE_DISABLED
@@ -353,7 +365,7 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
                     if (it && allChannelsWereOff) recoveryResult = PermissionHelper.maybeRecoverNotificationsOnForeground(context)
                 }
             }
-            Text(if (settings.enabled) "已开启识别。下方系统权限与服务状态仍需检查。" else "当前已暂停自动识别，手动补记仍可使用。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            Text(if (compatibility.active) "只读兼容性检查中，自动记录暂停；开关保持原设置。" else if (settings.enabled) "已开启识别。下方系统权限与服务状态仍需检查。" else "当前已暂停自动识别，手动补记仍可使用。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
         }
         SettingsCard("系统权限与服务") {
             PermissionRow("通知使用权", permissions.notificationAccess, permissions.notificationConnected, openLabel = "打开通知权限设置", statusTag = "notification_connection_status") {
@@ -381,7 +393,9 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
             Text("不同品牌手机可在系统应用管理中检查电池使用、允许后台活动等选项，名称随品牌和系统版本变化。若服务断开，检查开关或在系统设置中重新启用。", style = MaterialTheme.typography.bodySmall)
         }
         SettingsCard("本次运行诊断") {
-            Text("本次进程运行监听到 ${diagnostics.observedCount} 次\n处理完成 ${diagnostics.parsedCount} 次（含重复检查）\n异常 / 未处理 ${diagnostics.failureCount} 次", style = MaterialTheme.typography.bodyMedium)
+            Text("已选渠道窗口事件 ${diagnostics.windowEvents} 次（支持类型 ${diagnostics.supportedWindowEvents} 次）\n已选渠道通知事件 ${diagnostics.notificationEvents} 次\n进入解析 ${diagnostics.observedCount} 次\n处理完成 ${diagnostics.parsedCount} 次（含重复检查）\n筛选跳过 ${diagnostics.skippedCount} 次\n异常 ${diagnostics.failureCount} 次", style = MaterialTheme.typography.bodyMedium)
+            Text("事件不是付款笔数；进入解析才表示已通过前面的筛选。普通页面、会话通知等可能被跳过。零事件也可能来自进程重启或系统没有提供信息。", style = MaterialTheme.typography.bodySmall)
+            diagnostics.lastSkip?.let { Text("最近跳过：${it.label}", style = MaterialTheme.typography.bodySmall) }
             Text("这些是处理事件次数，不是新增账单笔数。计数仅保留在内存中，应用进程重启后归零；服务已连接仍不能保证不漏记。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
             Text("通知监听恢复请求 ${diagnostics.notificationReconnectRequests} 次", style = MaterialTheme.typography.bodySmall)
             diagnostics.lastNotificationReconnectAt?.let { Text("最近请求时间：${formatTime(it)}", style = MaterialTheme.typography.bodySmall) }
@@ -403,6 +417,27 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
                 Text("最近一次异常：$description", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             TextButton(onClick = { refreshCount++ }) { Text("刷新诊断状态") }
+        }
+        SettingsCard("只读兼容性检查") {
+            Text("本次进程内检查期间暂停自动记录，最多 5 分钟。只在内存保留最近 6 个支付应用的程序窗口类型；不读取付款文字、聊天、截图，检查本身不新增账单。结束或进程重启后按原有开关采集，手动补记仍可用。", style = MaterialTheme.typography.bodySmall)
+            Text(if (compatibility.active) "检查中 · 暂停自动记录" else "检查未运行", modifier = Modifier.testTag("compatibility_status"))
+            if (compatibility.active) {
+                OutlinedButton(onClick = { CaptureDiagnostics.stopCompatibilityCheck(); refreshCount++ }, modifier = Modifier.fillMaxWidth().testTag("stop_compatibility")) { Text("结束兼容性检查") }
+            } else {
+                OutlinedButton(onClick = { CaptureDiagnostics.startCompatibilityCheck(); reportCopied = false; refreshCount++ }, modifier = Modifier.fillMaxWidth().testTag("start_compatibility")) { Text("开始只读检查（5 分钟）") }
+            }
+            Text("开始后直接切到微信账单，打开这次已有付款的详情，再回这里刷新；期间请勿清后台。无需重新付款或分享付款页面。若采集开关或渠道关闭，该渠道不会收集诊断。", style = MaterialTheme.typography.bodySmall)
+            compatibility.windows.forEach { Text("${it.channel.label} · ${it.className}", style = MaterialTheme.typography.bodySmall) }
+            TextButton(onClick = { refreshCount++; reportCopied = false }) { Text("刷新检查结果") }
+            OutlinedButton(onClick = {
+                try {
+                    context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("兼容性诊断", CaptureDiagnostics.compatibilityReport(BuildConfig.VERSION_NAME, Build.VERSION.SDK_INT)))
+                    reportCopied = true
+                    copyError = false
+                } catch (_: RuntimeException) { reportCopied = false; copyError = true }
+            }, modifier = Modifier.fillMaxWidth().testTag("copy_compatibility")) { Text(if (reportCopied) "已复制诊断摘要" else "复制无账单原文的诊断摘要") }
+            if (copyError) Text("复制未完成，可手动记录上方的事件数字和窗口类型。", style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { CaptureDiagnostics.clearCompatibilityCheck(); reportCopied = false; refreshCount++ }) { Text("清除窗口类型结果") }
         }
         InformationCard("识别小样 · 真机待验证", "微信、支付宝的页面与交易通知规则已接入。扫码、网购、免密和后台自动扣费仍需逐项实测；没有可读信息时不会凭空生成账单，请手动补记。历史账单与疑似重复可能进入待核对。")
         SettingsCard("隐私与数据") {

@@ -25,6 +25,7 @@ internal class CaptureDispatcher(context: Context) {
     fun submit(input: CaptureInput) {
         val channel = PaymentChannel.fromPackage(input.packageName) ?: return
         if (!preferences.isCaptureEnabled(channel) || !CapturePolicy.accepts(input)) return
+        if (CaptureDiagnostics.compatibilityActive()) return
         if (inFlight.incrementAndGet() > MAX_IN_FLIGHT) {
             inFlight.decrementAndGet()
             CaptureDiagnostics.failed(CaptureFailure.QUEUE_FULL)
@@ -33,9 +34,12 @@ internal class CaptureDispatcher(context: Context) {
         CaptureDiagnostics.observed(channel, input.source, input.observedAt)
         val job = scope.launch {
             try {
-                if (!preferences.isCaptureEnabled(channel)) return@launch
-                val payment = PaymentParser.parse(input) ?: return@launch
-                if (!preferences.isCaptureEnabled(channel)) return@launch
+                if (!preferences.isCaptureEnabled(channel) || CaptureDiagnostics.compatibilityActive()) return@launch
+                val payment = PaymentParser.parse(input) ?: run {
+                    CaptureDiagnostics.skipped(CaptureSkip.PARSER_REJECTED, input.source)
+                    return@launch
+                }
+                if (!preferences.isCaptureEnabled(channel) || CaptureDiagnostics.compatibilityActive()) return@launch
                 LedgerRepository.get(appContext).ingest(payment)
                 CaptureDiagnostics.parsed()
             } catch (cancelled: CancellationException) {

@@ -22,10 +22,40 @@ class CapturePrivacyTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
     @Before fun clearSettings() {
+        CaptureDiagnostics.clearCompatibilityCheck()
         context.getSharedPreferences("capture_preferences", Context.MODE_PRIVATE).edit().clear().commit()
     }
 
-    @After fun leaveCaptureOff() { CapturePreferences(context).setEnabled(false) }
+    @After fun leaveCaptureOff() {
+        CapturePreferences(context).setEnabled(false)
+        CaptureDiagnostics.clearCompatibilityCheck()
+    }
+
+    @Test fun compatibilityCheckRejectsNotificationBeforeReadingItsBody() {
+        val notification = fictionalNotification("微信支付")
+        notification.extras.putCharSequence(Notification.EXTRA_TEXT, object : CharSequence {
+            override val length: Int get() = error("Notification body must not be inspected in compatibility mode")
+            override fun get(index: Int): Char = error("Body must not be inspected")
+            override fun subSequence(startIndex: Int, endIndex: Int): CharSequence = error("Body must not be inspected")
+            override fun toString(): String = error("Body must not be copied")
+        })
+        CaptureDiagnostics.startCompatibilityCheck()
+        assertNull(read(notification))
+        assertEquals(CaptureSkip.COMPATIBILITY_ONLY, CaptureDiagnostics.snapshot().lastSkip)
+        assertFalse(CaptureDiagnostics.compatibilityReport("fictional-test", 35).contains("23.50"))
+    }
+
+    @Test fun metadataRejectionsAreVisibleWithoutKeepingConversationTitlesOrBodies() {
+        val chat = fictionalNotification("虚构私密昵称")
+        chat.category = Notification.CATEGORY_MESSAGE
+        val before = CaptureDiagnostics.snapshot().skippedCount
+        assertNull(read(chat))
+        assertEquals(before + 1, CaptureDiagnostics.snapshot().skippedCount)
+        assertEquals(CaptureSkip.NOTIFICATION_CONVERSATION, CaptureDiagnostics.snapshot().lastSkip)
+        val report = CaptureDiagnostics.compatibilityReport("fictional-test", 35)
+        assertFalse(report.contains("虚构私密昵称"))
+        assertFalse(report.contains("23.50"))
+    }
 
     @Test fun permissionsAloneCannotEnableCaptureAndChannelOptOutPersists() {
         val preferences = CapturePreferences(context)

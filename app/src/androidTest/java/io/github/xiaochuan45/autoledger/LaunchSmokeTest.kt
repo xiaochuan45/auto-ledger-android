@@ -51,13 +51,34 @@ class LaunchSmokeTest {
 
     @Before
     fun clearVisibleFictionalRecords() {
+        CaptureDiagnostics.clearCompatibilityCheck()
         CapturePreferences(compose.activity).setEnabled(false)
         runBlocking { repository.records.first().forEach { repository.delete(it.id) } }
     }
 
     @After
     fun removeFictionalRecords() {
+        CaptureDiagnostics.clearCompatibilityCheck()
         runBlocking { repository.records.first().forEach { repository.delete(it.id) } }
+    }
+
+    @Test
+    fun compatibilityCheckCanBeStartedStoppedAndCopiedWithoutLedgerText() {
+        compose.onNodeWithText("设置").performClick()
+        compose.onNodeWithTag("start_compatibility").performScrollTo().performClick()
+        compose.onNodeWithTag("compatibility_status").assertTextContains("检查中 · 暂停自动记录")
+        CaptureDiagnostics.windowEvent(PaymentChannel.WECHAT, "com.tencent.mm.ui.FictionalProbeUI", false)
+        compose.onNodeWithText("刷新检查结果").performScrollTo().performClick()
+        compose.onNodeWithText("微信 · com.tencent.mm.ui.FictionalProbeUI").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("copy_compatibility").performScrollTo().performClick()
+        compose.onNodeWithText("已复制诊断摘要").assertIsDisplayed()
+        val clipboard = compose.activity.getSystemService(android.content.ClipboardManager::class.java)
+        val report = clipboard.primaryClip!!.getItemAt(0).text.toString()
+        org.junit.Assert.assertTrue(report.contains("com.tencent.mm.ui.FictionalProbeUI"))
+        org.junit.Assert.assertFalse(report.contains("商户"))
+        compose.onNodeWithTag("stop_compatibility").performScrollTo().performClick()
+        compose.onNodeWithTag("compatibility_status").assertTextContains("检查未运行")
+        runBlocking { org.junit.Assert.assertTrue(repository.records.first().isEmpty()) }
     }
 
     @Test

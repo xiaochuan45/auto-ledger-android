@@ -16,18 +16,19 @@ internal object NotificationCaptureReader {
         observedAt: Long,
     ): CaptureInput? {
         val channel = PaymentChannel.fromPackage(packageName) ?: return null
-        if (notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return null
-        val extras = notification.extras ?: return null
+        if (notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return skip(CaptureSkip.NOTIFICATION_GROUP)
+        val extras = notification.extras ?: return skip(CaptureSkip.NOTIFICATION_METADATA)
         // A contact can call themselves “微信支付”. Reject conversation/messaging evidence.
         if (notification.category == Notification.CATEGORY_MESSAGE ||
             extras.getString(Notification.EXTRA_TEMPLATE) == Notification.MessagingStyle::class.java.name ||
             CONVERSATION_KEYS.any(extras::containsKey) ||
             notification.shortcutId != null
-        ) return null
-        val titleValue = extras.getCharSequence(Notification.EXTRA_TITLE) ?: return null
+        ) return skip(CaptureSkip.NOTIFICATION_CONVERSATION)
+        val titleValue = extras.getCharSequence(Notification.EXTRA_TITLE) ?: return skip(CaptureSkip.NOTIFICATION_METADATA)
         if (titleValue.length > MAX_TITLE_CHARACTERS) return skipIncomplete()
         val title = titleValue.toString().trim()
-        if (!CapturePolicy.isTrustedNotificationTitle(channel, title)) return null
+        if (!CapturePolicy.isTrustedNotificationTitle(channel, title)) return skip(CaptureSkip.NOTIFICATION_TITLE)
+        if (CaptureDiagnostics.compatibilityActive()) return skip(CaptureSkip.COMPATIBILITY_ONLY)
 
         val text = TransientTextBuffer()
         text.add(extras.getCharSequence(Notification.EXTRA_TEXT))
@@ -37,7 +38,8 @@ internal object NotificationCaptureReader {
         lines?.forEach(text::add)
         if (text.incomplete) return skipIncomplete()
         val fragments = text.toList()
-        if (fragments.isEmpty() || fragments.any(::hasSensitiveText)) return null
+        if (fragments.isEmpty()) return skip(CaptureSkip.EMPTY_TEXT)
+        if (fragments.any(::hasSensitiveText)) return skip(CaptureSkip.SENSITIVE_GUARD)
         return CaptureInput(
             source = CaptureSource.NOTIFICATION,
             packageName = channel.packageName,
@@ -46,6 +48,11 @@ internal object NotificationCaptureReader {
             sourceKey = "notification:$key:$postTime",
             title = title,
         )
+    }
+
+    private fun skip(reason: CaptureSkip): Nothing? {
+        CaptureDiagnostics.skipped(reason, CaptureSource.NOTIFICATION)
+        return null
     }
 
     private fun skipIncomplete(): Nothing? {

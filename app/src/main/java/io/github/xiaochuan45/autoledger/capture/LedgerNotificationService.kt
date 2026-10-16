@@ -29,6 +29,7 @@ class LedgerNotificationService : NotificationListenerService() {
         if (sbn == null) return
         val channel = PaymentChannel.fromPackage(sbn.packageName) ?: return
         if (!preferences.isCaptureEnabled(channel)) return
+        CaptureDiagnostics.notificationEvent()
         try {
             val notification = sbn.notification ?: return
             val input = NotificationCaptureReader.read(sbn.packageName, notification,
