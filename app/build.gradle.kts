@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,7 +7,7 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
-val ledgerDelivery = java.util.Properties().apply {
+val ledgerDelivery = Properties().apply {
     rootProject.file("config/delivery.properties").inputStream().use { load(it) }
 }
 
