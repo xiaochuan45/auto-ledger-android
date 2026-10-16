@@ -1,0 +1,28 @@
+{
+  "source_sha": "f082dbf65a48abab22074df757aa71431e89224f",
+  "verification_sha": "a721b7a97becd28f05caaad99585d3fc455485c7",
+  "apk_sha256": "c72b06923d5caaca9240a5d2ee8c5ffe99bf44640093eb3013a7232859d32532",
+  "apk_bytes": 7155098,
+  "source_run": 38864436447,
+  "signed_run": 38861719901,
+  "signed_artifact": 12029407380,
+  "public_http": {
+    "auto-ledger-prototype.apk": 200,
+    "auto-ledger-prototype.apk.sha256": 200
+  },
+  "public_bytes_equal_tested": true,
+  "source_emulator_executed": {
+    "api26": 41,
+    "api35": 42,
+    "api36": 42
+  },
+  "signed_api35": {
+    "ordinary_tests": 42,
+    "previous_code": 5,
+    "current_code": 6,
+    "seed_tests": 1,
+    "verify_after_update_tests": 1,
+    "result": "success"
+  },
+  "phone_verification": "pending"
+}
