@@ -8,7 +8,7 @@
 
 **[最新 APK：本地账本 0.2.2-prototype](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.2/auto-ledger-prototype.apk)**，约 7.14 MB，最低 Android 8.0；[发布页与验证证据](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.2)。直接覆盖旧版，不要卸载或清除数据。手机步骤：开始只读检查 → 微信打开已有付款详情 → 回账本刷新、结束并复制摘要，无需再次消费；详见 [手机检查步骤](docs/PHASE2_TESTING.md)。
 
-代码、构建、Lint、JVM 58 项及 Python 8 项通过；源码模拟器 API 26 实际执行 32 项、API 35 执行 33 项。准确固定签名 APK 另通过 API 35 的 33 项测试及旧公开 0.2.1 → 本版真实覆盖升级、保留账单和采集开关检查。公开下载已验证与被测包逐字节一致。用户手机的本版安装、只读检查及支付捕获均待验证；不把自动化当作真实付款成功证据。完整校验值及限制见 [本版说明](docs/RELEASE_0.2.2.md)。
+代码、构建、Lint、JVM 58 项及 Python 8 项通过；源码模拟器 API 26 实际执行 32 项、API 35 执行 33 项。准确固定签名 APK 另通过 API 35 的 33 项测试及旧公开 0.2.1 → 本版真实覆盖升级、保留账单和采集开关检查。公开下载已验证与被测包逐字节一致。用户手机 API 36 已启动本版并复制只读摘要，无障碍收到 53 次事件；当前未命中支持窗口，检查入口待确认，真实付款捕获仍未验证。不把只读诊断或自动化当作真实付款成功证据。完整校验值及限制见 [本版说明](docs/RELEASE_0.2.2.md)。
 
 本版与第一阶段 `.preview` 应用并列安装。当前缺少完整分类规则、周期统计、退款关联、账单导入导出及加密备份，请保留其他账目来源，不作为唯一账本。
 

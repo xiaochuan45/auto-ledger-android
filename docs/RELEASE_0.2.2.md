@@ -1,6 +1,6 @@
 # 本地账本 · 只读兼容性诊断 0.2.2-prototype
 
-本版用于定位「服务已连接，但付款没有进入解析」的问题，**没有宣称已适配拼多多微信付款**。代码已实现；构建、Lint、58 项 JVM 与 8 项 Python 测试通过。源码模拟器 API 26 实际执行 32 项、API 35 执行 33 项，均通过；准确签名 APK 的 33 项 API 35 测试及旧公开 0.2.1 → 本版覆盖升级的数据保留验证通过。用户手机验证待执行。
+本版用于定位「服务已连接，但付款没有进入解析」的问题，**没有宣称已适配拼多多微信付款**。代码已实现；构建、Lint、58 项 JVM 与 8 项 Python 测试通过。源码模拟器 API 26 实际执行 32 项、API 35 执行 33 项，均通过；准确签名 APK 的 33 项 API 35 测试及旧公开 0.2.1 → 本版覆盖升级的数据保留验证通过。用户手机已启动并返回只读摘要；付款识别仍待验证。
 
 版本 `0.2.2-prototype` / code `4`，包名 `io.github.xiaochuan45.autoledger`；直接覆盖已安装的同签名 `0.2.1` / code `3`，不要先卸载或清除数据。
 
@@ -37,9 +37,9 @@
 | 源码矩阵 | [run 38855218679](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38855218679) 成功：API 26 实际执行 32 项、API 35 执行 33 项；API 29+ 的真实系统通知 shell 测试在 API 26 按 SDK 条件不执行，不计作通过 |
 | 准确签名 APK | [权限及签名严格审计](evidence/0.2.2-prototype/permissions-audit.md)通过；[run 38855285219](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38855285219) 成功：真实旧公开 code3 写入虚构数据 1 项通过 → 准确新 code4 覆盖安装 → 账单、去重及总/渠道开关保留检查 1 项通过；随后 33 项普通测试全部通过 |
 | 签名验证证据附件 | [artifact 12027152672](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38855285219/artifacts/12027152672)（GitHub 登录下载） |
-| 用户手机 | 0.2.2 安装和只读检查全部待测；拼多多微信自动识别尚未通过 |
+| 用户手机 | API 36 已启动并复制只读摘要：窗口事件 53、支持窗口 0、只读跳过 53、异常 0；仅有小程序/主界面类型，操作入口待确认。付款自动识别尚未通过 |
 
-公开 APK 与校验文件已实测返回 HTTP 200；APK 下载后与通过测试的签名文件逐字节一致。本版真机检查尚待用户执行，不能用虚构测试证明真实付款已识别。
+公开 APK 与校验文件已实测返回 HTTP 200；APK 下载后与通过测试的签名文件逐字节一致。用户手机已反馈只读摘要，事实与待确认入口见 [项目状态](https://github.com/xiaochuan45/auto-ledger-android/blob/main/docs/PHASE2_STATUS.md)。不能用只读诊断或虚构测试证明真实付款已识别。
 
 下载：[auto-ledger-prototype.apk](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.2/auto-ledger-prototype.apk)；[发布页 prototype-v0.2.2](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.2)。
 
