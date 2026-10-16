@@ -21,17 +21,36 @@
 
 ## 验证与交付
 
-JVM 95 项、Python 10 项、构建、Lint 已通过；生产源码模拟器 API 26 实际执行 47 项、API 35 / 36 各 48 项通过。准确签名 APK 的覆盖升级补强验证尚未完成，未发布本版。新增回归覆盖不可见结构根下的可见虚构账单、不可见字段不能补齐栏目、整树不可见仍无正文、异包/窗口/敏感容器拒绝，以及新请求清除旧检查。虚构节点通过本机测试 Activity 的无障碍回调构造，不打开微信或拼多多，不代表用户手机已通过。
+| 项目 | 结果与证据 |
+|---|---|
+| 下载 | [APK](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.2.7/auto-ledger-prototype.apk) / [发布页](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.2.7) |
+| 生产源码 | [`7e3878614882f4481391c5a41252c40344d0a45b`](https://github.com/xiaochuan45/auto-ledger-android/commit/7e3878614882f4481391c5a41252c40344d0a45b) |
+| 验证源码 | [`a8ab09421664311055a4a65c5b3eda3e57c510c7`](https://github.com/xiaochuan45/auto-ledger-android/commit/a8ab09421664311055a4a65c5b3eda3e57c510c7)，只改测试及验证脚本，生产代码和 APK 保持不变 |
+| APK 版本、大小 | `0.2.7-prototype` / code9；7,171,482 bytes |
+| APK SHA-256 | `e99faa4c5b4dbdfb738760fed5073bf8a7b2041c6d253892f55af531e2478e20` |
+| 签名证书 SHA-256 | `0e2a128391be8ae3d39140ed5d2cd7de8256d62b19233b3593d9ef97180b0073`，与旧版相同 |
+| 本地验证 | JVM 95 项、Python 10 项、构建、Lint、最终签名包审计通过 |
+| 生产源码矩阵 | [run 38872453856](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38872453856) 成功：API 26 实际执行 47 项，API 35、36 各 48 项通过；API 29+ shell 通知用例在 API 26 按 SDK 条件不执行 |
+| 最终验证源码矩阵 | [run 38874389323](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38874389323) 等待收尾 |
+| 准确签名 APK | [run 38874549930](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38874549930) 成功：API 35 普通 48 项；公开旧 code8 种子、旧版新进程基线、覆盖准确 code9 后的保留验证各 1 项通过 |
+| 权限与证据 | [最终签名包审计](evidence/0.2.7-prototype/permissions-audit.md) / [artifact 12034479394](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38874549930/artifacts/12034479394)，无联网、截图、全部窗口权限 |
+| 公开下载 | 等待源码矩阵完成后发布并核对公开文件 |
+| 用户手机 | 0.2.7 待安装验证；真实微信字段、保存去重、新付款自动入账及后台运行均未通过 |
+
+新增回归覆盖不可见结构根下的可见虚构账单、不可见字段不能补齐栏目、整树不可见仍无正文、异包/窗口/敏感容器拒绝，以及新请求清除旧检查。虚构节点通过本机测试 Activity 的无障碍回调构造，不打开微信或拼多多，不代表用户手机已通过。
 
 
 ## 首轮升级检查与验证夹具修正
 
 首轮准确签名包 [run 38872659361](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38872659361) 在「升级后采集开关保留」断言失败，未发布 APK。生产的偏好存储逻辑没有改动；旧夹具调用异步 `apply()` 后结束进程，没有在升级前独立验证磁盘基线，无法由这次结果区分种子未落盘和升级丢失。
 
-后续仅修改测试及验证脚本：种子结束前同步等待已有偏好写入，再在公开旧 APK 的新进程独立验证总开关及两个渠道，随后再次结束进程并覆盖升级。原有升级后账单、去重、删除抑制及开关断言全部保留，不重建生产 APK、不清除应用数据掩盖错误。后续结果验证完才发布；不能由模拟成功推断用户手机升级已实测。
+后续仅修改测试及验证脚本：种子结束前同步等待已有偏好写入，再在公开旧 APK 的新进程独立验证总开关及两个渠道，随后再次结束进程并覆盖升级。原有升级后账单、去重、删除抑制及开关断言全部保留，不重建生产 APK、不清除应用数据掩盖错误。最终结果以本页交付表为准；不能由模拟成功推断用户手机升级已实测。
 
 
-补强后的 [run 38873330591](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38873330591) 已通过种子、旧版新进程基线及真实覆盖升级三个阶段各 1 项；随后普通 48 项中的 1 项在测试服务初始化阶段失败（`scopeFailureSummaryOnlyContainsFixedLabelsAndCounts`），尚未通过最终交付。模拟夹具原先每页启停实际服务和切换 UiAutomation 抑制状态；改为整个测试类共用同一非抑制连接，类前确认真实服务已连接，类后统一恢复。逐页仍使用新 Activity、销毁 WebView 并清缓存，保留全部字段、隐私、去重断言。生产 APK 不变，后续通过才发布。
+补强后的 [run 38873330591](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38873330591) 已通过种子、旧版新进程基线及真实覆盖升级三个阶段各 1 项；随后普通 48 项中的 1 项在测试服务初始化阶段失败（`scopeFailureSummaryOnlyContainsFixedLabelsAndCounts`），该轮未通过最终交付。模拟夹具原先每页启停实际服务和切换 UiAutomation 抑制状态；改为整个测试类共用同一非抑制连接，类前确认真实服务已连接，类后统一恢复。逐页仍使用新 Activity、销毁 WebView 并清缓存，保留全部字段、隐私、去重断言。生产 APK 不变，最终通过结果见交付表。
 
 
 补强验证源码的 API 36 [run 38873256169](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/38873256169) 另出现手动操作测试的金额可见性失败（`LaunchSmokeTest.kt:150`）；节点已存在但测试未先滚动至金额。夹具现于金额展示断言及商户点击前滚动到对应节点，保留可见性断言、真实按钮点击和数据库值验证，不改生产界面或账目逻辑。
+
+
+最终准确签名包 `38874549930` 已通过三项升级阶段和全部 48 项；同期源码矩阵 `38874389323` 的 API 26 / 36 通过，API 35 的输入校验测试未成功选中渠道。该校验用例的渠道选择改为控件语义动作并立即断言选中，和它既有的保存动作一致；独立 CRUD 用例仍保留真实触摸及持久值断言。后续仅补验证源码矩阵，不重建或重复测试已通过的生产签名 APK；最终结果见交付表。

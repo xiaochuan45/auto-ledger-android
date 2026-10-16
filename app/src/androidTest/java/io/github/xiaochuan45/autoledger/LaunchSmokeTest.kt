@@ -247,7 +247,10 @@ class LaunchSmokeTest {
         compose.onNodeWithTag("edit_amount").performTextReplacement("1.999")
         compose.onNodeWithTag("edit_time").performScrollTo().performTextReplacement(validTime)
         compose.onNodeWithTag("edit_merchant").performScrollTo().performTextReplacement(merchant)
-        compose.onNodeWithTag("select_channel_WECHAT").performScrollTo().performClick()
+        // This is a validation test; CRUD separately retains real taps across these controls.
+        compose.onNodeWithTag("select_channel_WECHAT").performScrollTo().assertIsEnabled()
+            .performSemanticsAction(SemanticsActions.OnClick) { click -> click() }
+        compose.onNodeWithTag("select_channel_WECHAT").assertIsSelected()
 
         // Every other required field is valid, so only invalid precision can block this save.
         compose.onNodeWithTag("save_bill").performClick()
