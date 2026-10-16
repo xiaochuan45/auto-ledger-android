@@ -130,7 +130,7 @@ class WechatWebReceiptScopeTest {
         // Enable the real, non-tool app service in this emulator; its package filter excludes our HTML.
         val component = instrumentation.targetContext.packageName + "/" + LedgerAccessibilityService::class.java.name
         val services = previousServices.takeUnless { it == "null" || it.isBlank() }?.split(':').orEmpty()
-        shell(automation, "settings put secure enabled_accessibility_services " + quote((services + component).distinct().joinToString(":")))
+        shell(automation, "settings put secure enabled_accessibility_services " + settingToken((services + component).distinct().joinToString(":")))
         shell(automation, "settings put secure accessibility_enabled 1")
         val manager = instrumentation.targetContext.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
         val enabledDeadline = SystemClock.uptimeMillis() + 10_000
@@ -197,12 +197,16 @@ class WechatWebReceiptScopeTest {
         }
     }
 
-    private fun quote(value: String) = "'" + value.replace("'", "'\\''") + "'"
+    // UiAutomation uses Runtime.exec argv tokenization, not shell parsing: quotes become literal data.
+    private fun settingToken(value: String): String {
+        require(Regex("[A-Za-z0-9_.$/:+-]+").matches(value))
+        return value
+    }
     private fun shell(automation: UiAutomation, command: String) =
         ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command)).bufferedReader().use { it.readText().trim() }
     private fun restore(automation: UiAutomation, name: String, previous: String) {
-        shell(automation, if (previous == "null") "settings delete secure $name"
-            else "settings put secure $name " + quote(previous))
+        shell(automation, if (previous == "null" || previous.isBlank()) "settings delete secure $name"
+            else "settings put secure $name " + settingToken(previous))
     }
 
     /** Test-only traversal of our own fictional HTML; find-by-text is not implemented by every provider. */
