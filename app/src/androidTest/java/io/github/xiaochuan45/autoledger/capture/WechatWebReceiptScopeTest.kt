@@ -29,7 +29,7 @@ import org.junit.runner.RunWith
 import java.util.ArrayDeque
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import java.io.FileInputStream
+import android.os.ParcelFileDescriptor
 
 /** Local HTML in our own test Activity, never a payment app or external web site. */
 @RunWith(AndroidJUnit4::class)
@@ -195,9 +195,8 @@ class WechatWebReceiptScopeTest {
     }
 
     private fun quote(value: String) = "'" + value.replace("'", "'\\''") + "'"
-    private fun shell(automation: UiAutomation, command: String) = automation.executeShellCommand(command).use { descriptor ->
-        FileInputStream(descriptor.fileDescriptor).bufferedReader().use { it.readText().trim() }
-    }
+    private fun shell(automation: UiAutomation, command: String) =
+        ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command)).bufferedReader().use { it.readText().trim() }
     private fun restore(automation: UiAutomation, name: String, previous: String) {
         shell(automation, if (previous == "null") "settings delete secure $name"
             else "settings put secure $name " + quote(previous))
