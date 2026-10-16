@@ -5,6 +5,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CompatibilityCheckTest {
+    @Test fun alipayImplementationNamespaceIsAcceptedOnlyForAlipayEvents() {
+        val probe = CompatibilityCheck { 0 }
+        probe.start()
+        val name = "com.alipay.mobile.bill.detail.ui.FictionalDetailActivity"
+        probe.window(PaymentChannel.WECHAT, name)
+        assertTrue(probe.snapshot().windows.isEmpty())
+        probe.window(PaymentChannel.ALIPAY, name)
+        assertEquals(PaymentChannel.ALIPAY, probe.snapshot().windows.single().channel)
+    }
+
     @Test fun probeRequiresExplicitStartAndExpiresWithoutATimer() {
         var time = 0L
         val probe = CompatibilityCheck { time }

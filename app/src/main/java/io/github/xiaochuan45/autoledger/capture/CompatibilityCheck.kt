@@ -23,7 +23,9 @@ internal class CompatibilityCheck(private val clock: () -> Long = { System.nanoT
     @Synchronized fun window(channel: PaymentChannel, className: String?) {
         if (!snapshot().active || className == null || className.length > 200) return
         // A canonical app-owned Java type only: never retain arbitrary AccessibilityEvent values.
-        if (!className.startsWith(channel.packageName + ".") ||
+        val ownedNamespace = className.startsWith(channel.packageName + ".") ||
+            (channel == PaymentChannel.ALIPAY && className.startsWith("com.alipay."))
+        if (!ownedNamespace ||
             !Regex("[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)+").matches(className)) return
         val value = CompatibilityWindow(channel, className)
         windows.remove(value)
