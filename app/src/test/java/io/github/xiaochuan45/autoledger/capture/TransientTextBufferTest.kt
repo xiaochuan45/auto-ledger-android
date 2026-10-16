@@ -6,6 +6,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TransientTextBufferTest {
+    @Test fun webReceiptBudgetRemainsBoundedWithoutChangingNotificationLimit() {
+        val web = TransientTextBuffer(48)
+        repeat(48) { web.add("fictional receipt fragment $it") }
+        assertFalse(web.incomplete)
+        web.add("支付失败")
+        assertTrue(web.incomplete)
+        assertTrue(web.toList().isEmpty())
+        val regular = TransientTextBuffer()
+        repeat(25) { regular.add("fictional notification fragment $it") }
+        assertTrue(regular.incomplete)
+    }
     @Test fun rejectsOversizedForeignTextBeforeCopyingIt() {
         val foreign = object : CharSequence {
             override val length = 10_000_000

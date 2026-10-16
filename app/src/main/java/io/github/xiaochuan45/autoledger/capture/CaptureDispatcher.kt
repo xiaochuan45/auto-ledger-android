@@ -59,7 +59,8 @@ internal class CaptureDispatcher(context: Context) {
 }
 
 /** Never expose partial evidence: an omitted suffix may reverse a payment's apparent status. */
-internal class TransientTextBuffer {
+internal class TransientTextBuffer(private val fragmentLimit: Int = MAX_FRAGMENTS) {
+    init { require(fragmentLimit in 1..48) }
     private val fragments = linkedSetOf<String>()
     private var totalCharacters = 0
     var incomplete: Boolean = false
@@ -68,7 +69,7 @@ internal class TransientTextBuffer {
     fun add(text: CharSequence?) {
         if (text == null || text.isEmpty() || incomplete) return
         // Check before copying. Even a single long fragment invalidates the entire sample.
-        if (text.length > MAX_CHARACTERS - totalCharacters || fragments.size >= MAX_FRAGMENTS) {
+        if (text.length > MAX_CHARACTERS - totalCharacters || fragments.size >= fragmentLimit) {
             markIncomplete()
             return
         }

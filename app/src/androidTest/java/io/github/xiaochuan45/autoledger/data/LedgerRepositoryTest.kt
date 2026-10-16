@@ -11,6 +11,9 @@ import io.github.xiaochuan45.autoledger.core.ParsedPayment
 import io.github.xiaochuan45.autoledger.core.PaymentChannel
 import io.github.xiaochuan45.autoledger.core.RecordStatus
 import io.github.xiaochuan45.autoledger.core.TimeSource
+import io.github.xiaochuan45.autoledger.core.CaptureInput
+import io.github.xiaochuan45.autoledger.core.PaymentParser
+import io.github.xiaochuan45.autoledger.core.WechatWebReceipt
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -65,6 +68,37 @@ class LedgerRepositoryTest {
         assertEquals("ACCESSIBILITY,NOTIFICATION", record.sourceTypes)
         assertEquals(2350L, record.amountMinor)
         assertEquals(RecordStatus.CONFIRMED.name, record.status)
+    }
+
+    @Test fun webReceiptReopensStayOneReviewAndDistinctSameAmountTradeRemainsIndependent() = runBlocking {
+        fun web(id: String, key: String): ParsedPayment = requireNotNull(PaymentParser.parse(CaptureInput(
+            CaptureSource.ACCESSIBILITY, PaymentChannel.WECHAT.packageName,
+            listOf("虚构商店", "-42.70", "当前状态", "支付成功", "支付时间", "2025年3月12日 10:20:30",
+                "支付方式", "零钱", "交易单号", id, "商户单号", "FICTIONAL-ORDER", "收单机构", "虚构机构", "账单服务"),
+            now, key, screenClass = WechatWebReceipt.WINDOW)))
+        val first = repository.ingest(web("FICTIONAL-WEB-A", "fictional-first"))
+        database.close()
+        open()
+        val replay = repository.ingest(web("FICTIONAL-WEB-A", "fictional-reopen"))
+        assertEquals(first.recordId, replay.recordId)
+        val second = repository.ingest(web("FICTIONAL-WEB-B", "fictional-second"))
+        assertNotEquals(first.recordId, second.recordId)
+        assertEquals(2, repository.records.first().size)
+        assertTrue(repository.records.first().all { it.status == RecordStatus.REVIEW.name && it.amountMinor == 4270L })
+        assertTrue(repository.records.first().none { it.status == RecordStatus.CONFIRMED.name })
+    }
+
+    @Test fun unverifiedWebEvidenceCannotChangeAnExistingBillOrBypassReview() = runBlocking {
+        val original = repository.ingest(payment(transaction = "FICTIONAL-WEB-EXISTING"))
+        val before = repository.getRecord(original.recordId)
+        repository.ingest(payment(capture = "fictional-web-existing", transaction = "FICTIONAL-WEB-EXISTING")
+            .copy(source = CaptureSource.WEB_RECEIPT, amountMinor = 99999, merchant = "虚构未验证商户",
+                status = RecordStatus.REVIEW, reviewReason = WechatWebReceipt.REVIEW_REASON))
+        assertEquals(before, repository.getRecord(original.recordId))
+        val untrusted = repository.ingest(payment(capture = "fictional-web-forced-confirm", transaction = "FICTIONAL-WEB-NEW")
+            .copy(source = CaptureSource.WEB_RECEIPT, status = RecordStatus.CONFIRMED, reviewReason = null))
+        assertEquals(RecordStatus.REVIEW.name, repository.getRecord(untrusted.recordId)?.status)
+        assertEquals(WechatWebReceipt.REVIEW_REASON, repository.getRecord(untrusted.recordId)?.reviewReason)
     }
 
     @Test fun differentStrongIdsKeepConsecutiveSameAmountPaymentsIndependent() = runBlocking {

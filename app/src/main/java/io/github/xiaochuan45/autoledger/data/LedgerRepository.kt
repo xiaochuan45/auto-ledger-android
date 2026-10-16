@@ -9,6 +9,7 @@ import io.github.xiaochuan45.autoledger.core.LedgerDraft
 import io.github.xiaochuan45.autoledger.core.ParsedPayment
 import io.github.xiaochuan45.autoledger.core.RecordStatus
 import io.github.xiaochuan45.autoledger.core.TimeSource
+import io.github.xiaochuan45.autoledger.core.WechatWebReceipt
 import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
@@ -80,6 +81,7 @@ class LedgerRepository internal constructor(
             !validTime -> "交易时间无效，已使用识别时间，请核对"
             payment.kind != EntryKind.EXPENSE -> "此版本仅自动确认消费；请核对资金类型，退款尚未关联原消费"
             possibleDuplicate != null -> "与已有记录相似但缺少共同交易号，请核对是否为同一笔"
+            payment.source == CaptureSource.WEB_RECEIPT -> payment.reviewReason ?: WechatWebReceipt.REVIEW_REASON
             payment.status == RecordStatus.REVIEW -> payment.reviewReason ?: "交易状态或信息不明确，请核对"
             else -> null
         }
@@ -192,6 +194,8 @@ class LedgerRepository internal constructor(
     }
 
     private fun enrich(previous: LedgerRecord, payment: ParsedPayment, now: Long): LedgerRecord {
+        // Shared-web provenance is unverified: deduplicate, but never change an existing bill.
+        if (payment.source == CaptureSource.WEB_RECEIPT) return previous
         val sources = unionSources(previous.sourceTypes, payment.source.name)
         if (previous.userEdited) {
             return if (sources == previous.sourceTypes) previous else previous.copy(sourceTypes = sources, updatedAt = now)

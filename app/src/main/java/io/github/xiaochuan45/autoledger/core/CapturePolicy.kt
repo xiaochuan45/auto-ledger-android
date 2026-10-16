@@ -33,8 +33,9 @@ object CapturePolicy {
         if (input.sourceKey.isBlank() || input.texts.isEmpty()) return false
         return when (input.source) {
             CaptureSource.NOTIFICATION -> isTrustedNotificationTitle(channel, input.title)
-            CaptureSource.ACCESSIBILITY -> isPaymentWindow(channel, input.screenClass)
-            CaptureSource.MANUAL -> false // Manual entries go through explicit user input, not text recognition.
+            CaptureSource.ACCESSIBILITY -> isPaymentWindow(channel, input.screenClass) ||
+                (WechatWebReceipt.isCandidate(channel, input.screenClass) && WechatWebReceipt.hasReceiptLabels(input.texts))
+            CaptureSource.MANUAL, CaptureSource.WEB_RECEIPT -> false // Only the scoped parser can produce a web receipt.
         }
     }
 }

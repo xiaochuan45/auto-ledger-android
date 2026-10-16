@@ -42,6 +42,11 @@ object PaymentParser {
         val body = pieces.filterNot { it == input.title?.trim() }.joinToString("\n")
         val text = (listOfNotNull(input.title?.let(::normalize)) + body).joinToString("\n")
         if (sensitive.containsMatchIn(text)) return null
+        val webReceipt = input.source == CaptureSource.ACCESSIBILITY &&
+            WechatWebReceipt.isCandidate(channel, input.screenClass)
+        val webHeader = if (webReceipt) WechatWebReceipt.headerAmounts(body) else emptyList()
+        // An income header must never turn into an expense by dropping its sign.
+        if (webHeader.any { it.startsWith("+") }) return null
         val kind = when {
             Regex("退款|退回款项").containsMatchIn(body) -> EntryKind.REFUND
             body.contains("提现") -> EntryKind.WITHDRAWAL
@@ -62,12 +67,13 @@ object PaymentParser {
         val hasFailure = failed.containsMatchIn(body)
         if (kind == EntryKind.EXPENSE && negatedSuccess.containsMatchIn(text)) return null
         if (kind == EntryKind.EXPENSE && hasFailure && !hasSuccess) return null
-        val related = hasSuccess || hasFailure || kind != EntryKind.EXPENSE ||
+        val related = webReceipt || hasSuccess || hasFailure || kind != EntryKind.EXPENSE ||
             (input.title?.let { success.containsMatchIn(it) } == true) ||
             Regex("实付|支付金额|付款金额|消费金额|扣款金额|交易状态|支付状态|付款状态|扣款状态").containsMatchIn(body)
         if (!related) return null
 
         val reasons = mutableListOf<String>()
+        if (webReceipt) reasons += WechatWebReceipt.REVIEW_REASON
         if (kind == EntryKind.EXPENSE && !hasSuccess) reasons += "未读到明确的付款成功状态"
         if (hasFailure) reasons += "同时包含未完成或失败状态，无法确认交易结果"
         if (kind != EntryKind.EXPENSE) reasons += when (kind) {
@@ -78,7 +84,8 @@ object PaymentParser {
             else -> error("unreachable")
         }
 
-        val amountResult = extractAmount(body, kind, hasSuccess)
+        val amountResult = extractAmount(body, kind, hasSuccess,
+            if (webReceipt && kind == EntryKind.EXPENSE && hasSuccess) webHeader.map { it.removePrefix("-") } else emptyList())
         reasons += amountResult.reasons
         val merchant = field(body, "商户名称|商户全称|收款商户|商家名称|商户|收款方|交易对方")
         val platform = field(body, "消费平台|交易平台|平台")
@@ -111,14 +118,14 @@ object PaymentParser {
             transactionId = transactionId,
             captureKey = hash(input.source.name, channel.name, input.sourceKey, fingerprint),
             contentFingerprint = fingerprint,
-            source = input.source,
+            source = if (webReceipt) CaptureSource.WEB_RECEIPT else input.source,
             reviewReason = reasons.distinct().takeIf { it.isNotEmpty() }?.joinToString("；"),
         )
     }
 
     private data class AmountResult(val amount: Long?, val reasons: List<String>)
 
-    private fun extractAmount(text: String, kind: EntryKind, hasSuccess: Boolean): AmountResult {
+    private fun extractAmount(text: String, kind: EntryKind, hasSuccess: Boolean, webHeader: List<String> = emptyList()): AmountResult {
         val specific = when (kind) {
             EntryKind.REFUND -> Regex("(?:实际退款|退款金额|退回金额|退款到账金额)$amountSuffix")
             EntryKind.TRANSFER -> Regex("(?:转账金额|转出金额)$amountSuffix")
@@ -135,9 +142,10 @@ object PaymentParser {
             standaloneCurrencyAmount.findAll(text).map { it.groupValues[1] + it.groupValues[2] }.toList()
         } else emptyList()
         val candidates = when {
-            primary.isNotEmpty() -> primary + secondary + inline
-            secondary.isNotEmpty() -> secondary
-            inline.isNotEmpty() -> inline
+            primary.isNotEmpty() -> primary + secondary + inline + webHeader
+            secondary.isNotEmpty() -> secondary + webHeader
+            inline.isNotEmpty() -> inline + webHeader
+            webHeader.isNotEmpty() -> webHeader
             isolatedCurrency.isNotEmpty() -> isolatedCurrency
             else -> return AmountResult(null, listOf(when (kind) {
                 EntryKind.EXPENSE -> "未读到明确的实际付款金额"

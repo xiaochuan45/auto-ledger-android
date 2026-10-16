@@ -11,6 +11,7 @@ import io.github.xiaochuan45.autoledger.core.CaptureInput
 import io.github.xiaochuan45.autoledger.core.CapturePolicy
 import io.github.xiaochuan45.autoledger.core.CaptureSource
 import io.github.xiaochuan45.autoledger.core.PaymentChannel
+import io.github.xiaochuan45.autoledger.core.WechatWebReceipt
 import java.util.ArrayDeque
 import java.util.UUID
 
@@ -51,6 +52,7 @@ class LedgerAccessibilityService : AccessibilityService() {
         val className = event.className?.toString().orEmpty()
         val nowElapsed = SystemClock.elapsedRealtime()
         val trustedClass = CapturePolicy.isPaymentWindow(channel, className)
+        val webCandidate = WechatWebReceipt.isCandidate(channel, className)
         val stateChanged = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         CaptureDiagnostics.windowEvent(channel, className, stateChanged && trustedClass, recordType = stateChanged)
         if (CaptureDiagnostics.compatibilityActive()) {
@@ -65,7 +67,7 @@ class LedgerAccessibilityService : AccessibilityService() {
         }
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             // Entering any unsupported page/dialog invalidates a previously verified payment window.
-            if (!trustedClass) {
+            if (!trustedClass && !webCandidate) {
                 clearWindow()
                 CaptureDiagnostics.skipped(CaptureSkip.WINDOW_UNSUPPORTED, CaptureSource.ACCESSIBILITY)
                 return
@@ -89,7 +91,7 @@ class LedgerAccessibilityService : AccessibilityService() {
                 nowElapsed - current.verifiedAtElapsed > SESSION_VALIDITY_MS
             ) { clearWindow(); return }
             // Content event classes are usually TextView/FrameLayout. They cannot establish trust.
-            if (trustedClass && className != current.screenClass) { clearWindow(); return }
+            if ((trustedClass || webCandidate) && className != current.screenClass) { clearWindow(); return }
         }
 
         val current = session ?: return
@@ -127,7 +129,19 @@ class LedgerAccessibilityService : AccessibilityService() {
                 CaptureDiagnostics.skipped(CaptureSkip.WINDOW_CHANGED, CaptureSource.ACCESSIBILITY)
                 return
             }
-            val texts = collectPaymentText(root, expected.channel.packageName) ?: return
+            val webReceipt = WechatWebReceipt.isCandidate(expected.channel, expected.screenClass)
+            val scopedRoot = if (webReceipt) {
+                val matched = try {
+                    WechatWebReceiptScope.findReceiptRoot(root, expected.channel.packageName, expected.windowId)
+                } finally { releaseNode(root) }
+                if (matched == null) {
+                    CaptureDiagnostics.skipped(CaptureSkip.WEB_RECEIPT_SCOPE, CaptureSource.ACCESSIBILITY)
+                    return
+                }
+                CaptureDiagnostics.webReceiptMatched()
+                matched
+            } else root
+            val texts = collectPaymentText(scopedRoot, expected.channel.packageName, if (webReceipt) 48 else 24) ?: return
             if (texts.isEmpty()) {
                 CaptureDiagnostics.skipped(CaptureSkip.EMPTY_TEXT, CaptureSource.ACCESSIBILITY)
                 return
@@ -147,9 +161,9 @@ class LedgerAccessibilityService : AccessibilityService() {
     }
 
     /** Takes ownership of root and releases every obtained node, including exceptional paths. */
-    private fun collectPaymentText(root: AccessibilityNodeInfo, expectedPackage: String): List<String>? {
+    private fun collectPaymentText(root: AccessibilityNodeInfo, expectedPackage: String, fragmentLimit: Int): List<String>? {
         val queue = ArrayDeque<AccessibilityNodeInfo>()
-        val texts = TransientTextBuffer()
+        val texts = TransientTextBuffer(fragmentLimit)
         var visited = 0
         queue.add(root)
         try {

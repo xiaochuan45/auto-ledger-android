@@ -19,6 +19,7 @@ enum class CaptureSkip(val label: String) {
     WINDOW_UNSUPPORTED("页面类型尚不支持，未读取页面"), WINDOW_UNVERIFIED("没有已验证的付款窗口"),
     ROOT_UNAVAILABLE("系统未提供当前付款窗口"), WINDOW_CHANGED("当前窗口已变化"),
     WINDOW_ID_MISSING("系统窗口标识不可用"),
+    WEB_RECEIPT_SCOPE("微信网页未满足完整账单栏目结构，未读取正文"),
     PARSER_REJECTED("已读取输入，但没有可识别的交易证据"),
     COMPATIBILITY_ONLY("只读兼容性检查中，未读取付款内容或入账"),
 }
@@ -37,6 +38,7 @@ data class CaptureDiagnosticSnapshot(
     val notificationEvents: Long = 0,
     val windowEvents: Long = 0,
     val supportedWindowEvents: Long = 0,
+    val webReceiptMatches: Long = 0,
     val skippedCount: Long = 0,
     val lastSkip: CaptureSkip? = null,
     val lastSkipSource: CaptureSource? = null,
@@ -59,6 +61,7 @@ object CaptureDiagnostics {
             appendLine("本地账本 $appVersion / Android API $sdk")
             appendLine("兼容性检查：${if (probe.active) "进行中，暂停自动记录" else "未运行"}")
             appendLine("已选渠道窗口事件：${current.windowEvents}；支持窗口：${current.supportedWindowEvents}")
+            appendLine("微信网页账单结构命中：${current.webReceiptMatches}（仍需核对来源）")
             appendLine("已选渠道通知事件：${current.notificationEvents}")
             appendLine("进入解析：${current.observedCount}；完成处理：${current.parsedCount}")
             appendLine("筛选跳过：${current.skippedCount}；异常：${current.failureCount}")
@@ -73,6 +76,10 @@ object CaptureDiagnostics {
 
     @Synchronized internal fun notificationEvent() {
         current = current.copy(notificationEvents = current.notificationEvents.incrementSafely())
+    }
+
+    @Synchronized internal fun webReceiptMatched() {
+        current = current.copy(webReceiptMatches = current.webReceiptMatches.incrementSafely())
     }
 
     @Synchronized internal fun windowEvent(channel: PaymentChannel, className: String?, supported: Boolean, recordType: Boolean = true) {
