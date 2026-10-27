@@ -1,5 +1,9 @@
 # 第二阶段：自动识别小样
 
+## 2026-10-27 最新暂停点
+
+用户要求「下次再做，先保存记录」，开发与手机测试均暂停，等待再次开始。最新已发布版本仍为 0.3.0；本轮只完成离线 OCR 和个人账单导入的方案、候选依赖下载准备，没有应用源码变更、新版 APK 或新增测试证据。下一步范围、依赖固定版本和恢复说明见 [开发暂停记录](DEVELOPMENT_CHECKPOINT.md)。
+
 ## 最新归档 0.3.0：多来源通知与支付身份分离
 
 已归档 [Release](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.3.0) / [APK](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.3.0/auto-ledger-prototype.apk)，手机测试按用户要求暂停，当前无需安装。生产源码 `9bb7b91ab37afbd1d66c037beb5b132815378de3`，验证源码 `c3ad587ac40d236dac8c13de40489577b3c12ba3` 仅修改测试时钟；固定包名和签名、Room schema1 不变。code10，7,171,482 bytes，SHA-256 `4c028f24ef7f160e5e203d4515719dc6aeb7e1e9dc31afa0fd985883672d58f3`，公开 APK/校验文件 HTTP 200 且 APK 与被测签名包逐字节相同。
