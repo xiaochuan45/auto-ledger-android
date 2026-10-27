@@ -1,0 +1,42 @@
+{
+  "source_sha": "9bb7b91ab37afbd1d66c037beb5b132815378de3",
+  "source_run": 40508602279,
+  "apk_sha256": "4c028f24ef7f160e5e203d4515719dc6aeb7e1e9dc31afa0fd985883672d58f3",
+  "apk_bytes": 7171482,
+  "failed_signed_run": 40508843225,
+  "verification_sha": "c3ad587ac40d236dac8c13de40489577b3c12ba3",
+  "signed_run": 40510262600,
+  "verification_source_run": 40509958334,
+  "signed_artifact": 12736936666,
+  "public_http": {
+    "auto-ledger-prototype.apk": 200,
+    "auto-ledger-prototype.apk.sha256": 200
+  },
+  "public_bytes_equal_tested": true,
+  "version": "0.3.0-prototype",
+  "version_code": 10,
+  "tag": "prototype-v0.3.0",
+  "source_instrumentation_passed": {
+    "26": 54,
+    "35": 55,
+    "36": 55
+  },
+  "signed_instrumentation_api": 35,
+  "signed_instrumentation_passed": 55,
+  "upgrade_from_public_version_code": 9,
+  "upgrade_seed_passed": 1,
+  "old_version_restart_verification_passed": 1,
+  "upgrade_verify_passed": 1,
+  "unit_passed": 107,
+  "python_passed": 10,
+  "phone_validation": "paused_by_user",
+  "source_apps": 7,
+  "exact_source_packages": 8,
+  "platform_sources_default_enabled": false,
+  "room_schema_version": 1,
+  "production_unchanged_during_fixture_fix": true,
+  "initial_source_conclusion": "failure",
+  "verification_source_conclusion": "success",
+  "signed_conclusion": "success",
+  "certificate_sha256": "0e2a128391be8ae3d39140ed5d2cd7de8256d62b19233b3593d9ef97180b0073"
+}

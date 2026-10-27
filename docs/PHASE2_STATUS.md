@@ -1,5 +1,13 @@
 # 第二阶段：自动识别小样
 
+## 最新归档 0.3.0：多来源通知与支付身份分离
+
+已归档 [Release](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.3.0) / [APK](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.3.0/auto-ledger-prototype.apk)，手机测试按用户要求暂停，当前无需安装。生产源码 `9bb7b91ab37afbd1d66c037beb5b132815378de3`，验证源码 `c3ad587ac40d236dac8c13de40489577b3c12ba3` 仅修改测试时钟；固定包名和签名、Room schema1 不变。code10，7,171,482 bytes，SHA-256 `4c028f24ef7f160e5e203d4515719dc6aeb7e1e9dc31afa0fd985883672d58f3`，公开 APK/校验文件 HTTP 200 且 APK 与被测签名包逐字节相同。
+
+JVM 107、Python 10、构建、Lint 通过。[源码 CI 40509958334](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/40509958334) API 26 实际执行 54 项，API 35 / 36 各 55 项通过；[准确签名包 CI 40510262600](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/40510262600) API 35 普通 55 项，以及公开旧 code9 种子、旧版新进程基线、覆盖 code10 后保留账单/去重/开关三个阶段各 1 项通过。[审计](evidence/0.3.0-prototype/permissions-audit.md)无联网、截图、短信或新增系统权限。首次撤销测试超时及测试时钟修正在 [交付说明](RELEASE_0.3.0.md)保留，生产 APK 未变。
+
+已实现 7 类来源/8 个精确包的通知目录、来源与渠道分离、平台默认关闭及辅助证据关联；平台单独通知不计支出，缺支付身份不猜合并。所有样本虚构，未打开第三方支付应用。真实场景仍无通过证据，OCR/导入等后续能力未实现，不把本轮归档称为全场景自动记账完成。
+
 ## 2026-10-27：手机测试暂停，转向多来源架构
 
 用户暂不继续测试 0.2.7，确认一个本地账本覆盖微信/支付宝付款及电商购物，不需要同步到其他记账软件。已调研成熟开源项目的通知、OCR、Hook 与目标账本适配分工，见 [调研记录](MULTI_APP_RESEARCH.md)。不再把修补单个微信窗口当成多场景采集。

@@ -22,7 +22,22 @@
 
 ## 验证与交付
 
-本地及云端验证进行中。所有样本虚构：测试来源包名/标题/来源类型一致性、未知/冲突渠道、优惠后实付、失败/取消/发货/促销、平台与支付双向到达的共同身份、连续同额不同交易、普通订单号碰撞、用户编辑保护及独立开关。生产 APK 构建、签名、权限、升级和公开下载完成后补充真实证据；任何自动化通过均不替代真机成功。
+| 项目 | 结果与证据 |
+|---|---|
+| 归档 | [发布页](https://github.com/xiaochuan45/auto-ledger-android/releases/tag/prototype-v0.3.0) / [APK](https://github.com/xiaochuan45/auto-ledger-android/releases/download/prototype-v0.3.0/auto-ledger-prototype.apk)，当前无需用户安装 |
+| 生产源码 | [`9bb7b91ab37afbd1d66c037beb5b132815378de3`](https://github.com/xiaochuan45/auto-ledger-android/commit/9bb7b91ab37afbd1d66c037beb5b132815378de3) |
+| 验证源码 | [`c3ad587ac40d236dac8c13de40489577b3c12ba3`](https://github.com/xiaochuan45/auto-ledger-android/commit/c3ad587ac40d236dac8c13de40489577b3c12ba3)，仅修正测试时钟，生产代码与 APK 不变 |
+| APK 身份 | `0.3.0-prototype` / code10；7,171,482 bytes |
+| APK SHA-256 | `4c028f24ef7f160e5e203d4515719dc6aeb7e1e9dc31afa0fd985883672d58f3` |
+| 固定签名证书 SHA-256 | `0e2a128391be8ae3d39140ed5d2cd7de8256d62b19233b3593d9ef97180b0073`，与公开旧版相同 |
+| 本地检查 | JVM 107 项、Python 10 项、构建、Lint、签名与最终 APK 权限审计通过 |
+| 源码设备矩阵 | [run 40509958334](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/40509958334) 成功：API 26 实际执行 54 项，API 35 / 36 各 55 项通过；API 29+ 通知 shell 用例在 API 26 按 SDK 条件不执行 |
+| 准确签名 APK | [run 40510262600](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/40510262600) 成功：API 35 普通 55 项，公开旧 code9 种子、旧版重启基线、真实覆盖 code10 后的保留验证各 1 项通过 |
+| 最终包审计 | [审计报告](evidence/0.3.0-prototype/permissions-audit.md) / [artifact 12736936666](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/40510262600/artifacts/12736936666)，无联网、短信、截图、全部窗口权限或新增系统权限 |
+| 公开下载 | APK 与校验文件均 HTTP 200；公开下载 APK 与云端被测签名文件逐字节一致 |
+| 真机 | 按用户要求暂停，所有新增平台场景未测试；原微信真实采集没有成功证据 |
+
+自动化全部使用虚构数据，覆盖来源包名/标题/来源类型一致性、未知/冲突渠道、优惠后实付、已支付/已付款/已扣款及否定条件句、失败/取消/发货/促销、平台与支付双向到达的共同身份、连续同额不同交易、普通订单号碰撞、用户编辑保护及独立开关。没有打开真实微信、支付宝或电商应用，不代表这些软件会发出当前规则的通知。
 
 
-首轮准确签名包 [run 40508843225](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/40508843225) 三段升级检查各 1 项通过；普通 55 项中新增多来源用例通过，旧 CRUD 的删除后等待撤销（`LaunchSmokeTest.kt:158`）超时，未发布。本轮只修改测试时钟：在删除到点击撤销期间手动推进 Compose 帧，验证真实删除、真实撤销点击和持久记录恢复，保留全部断言，生产 APK 不变。最终交付以重新验证结果为准。
+首轮准确签名包 [run 40508843225](https://github.com/xiaochuan45/auto-ledger-android/actions/runs/40508843225) 三段升级检查各 1 项通过；普通 55 项中新增多来源用例通过，旧 CRUD 的删除后等待撤销（`LaunchSmokeTest.kt:158`）超时，未发布。本轮只修改测试时钟：在删除到点击撤销期间手动推进 Compose 帧，验证真实删除、真实撤销点击和持久记录恢复，保留全部断言，生产 APK 不变。修正后结果见上方最终交付表，不以此推断手机真机通过。
