@@ -154,9 +154,23 @@ class LaunchSmokeTest {
         compose.onNodeWithTag("save_bill").performClick()
         waitForText("19.80 元")
         compose.onNodeWithText(merchant).performScrollTo().performClick()
-        compose.onNodeWithTag("delete_bill").performScrollTo().performClick()
-        waitForText("撤销")
-        compose.onNodeWithText("撤销").performClick()
+        compose.onNodeWithTag("delete_bill").performScrollTo().assertIsDisplayed().assertIsEnabled()
+        compose.waitForIdle()
+        val deletedId = runBlocking { repository.records.first().single { it.merchant == merchant }.id }
+        // Keep the transient Undo affordance alive while native/Room work completes on a slow emulator.
+        // Still tap real controls and require both the deletion and the restored persisted row.
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.onNodeWithTag("delete_bill").performClick()
+            compose.waitUntil(timeoutMillis = 10_000) {
+                compose.mainClock.advanceTimeByFrame()
+                compose.onAllNodesWithText("撤销").fetchSemanticsNodes().isNotEmpty()
+            }
+            runBlocking { org.junit.Assert.assertTrue(repository.getRecord(deletedId)!!.deletedAt != null) }
+            compose.mainClock.advanceTimeBy(250)
+            compose.onNodeWithText("撤销").assertIsDisplayed().performClick()
+            compose.mainClock.advanceTimeBy(250)
+        } finally { compose.mainClock.autoAdvance = true }
         waitForText(merchant)
         compose.onNodeWithText("19.80 元").performScrollTo().assertIsDisplayed()
         runBlocking {
