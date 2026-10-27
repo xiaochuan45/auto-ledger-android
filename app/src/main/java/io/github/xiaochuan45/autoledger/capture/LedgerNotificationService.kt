@@ -3,7 +3,7 @@ package io.github.xiaochuan45.autoledger.capture
 import android.content.Intent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import io.github.xiaochuan45.autoledger.core.PaymentChannel
+import io.github.xiaochuan45.autoledger.core.CaptureApp
 
 class LedgerNotificationService : NotificationListenerService() {
     private lateinit var preferences: CapturePreferences
@@ -27,9 +27,9 @@ class LedgerNotificationService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         if (sbn == null) return
-        val channel = PaymentChannel.fromPackage(sbn.packageName) ?: return
-        if (!preferences.isCaptureEnabled(channel)) return
-        CaptureDiagnostics.notificationEvent()
+        val app = CaptureApp.fromPackage(sbn.packageName) ?: return
+        if (!preferences.isAppEnabled(app)) return
+        CaptureDiagnostics.notificationEvent(app)
         try {
             val notification = sbn.notification ?: return
             val input = NotificationCaptureReader.read(sbn.packageName, notification,

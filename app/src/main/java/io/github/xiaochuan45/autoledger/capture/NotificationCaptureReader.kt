@@ -2,9 +2,9 @@ package io.github.xiaochuan45.autoledger.capture
 
 import android.app.Notification
 import io.github.xiaochuan45.autoledger.core.CaptureInput
-import io.github.xiaochuan45.autoledger.core.CapturePolicy
 import io.github.xiaochuan45.autoledger.core.CaptureSource
-import io.github.xiaochuan45.autoledger.core.PaymentChannel
+import io.github.xiaochuan45.autoledger.core.CaptureApp
+import io.github.xiaochuan45.autoledger.core.NotificationAdapters
 
 /** Filtering happens before message bodies are read; title matching is not sender authentication. */
 internal object NotificationCaptureReader {
@@ -15,7 +15,8 @@ internal object NotificationCaptureReader {
         postTime: Long,
         observedAt: Long,
     ): CaptureInput? {
-        val channel = PaymentChannel.fromPackage(packageName) ?: return null
+        val app = CaptureApp.fromPackage(packageName) ?: return null
+        val adapter = NotificationAdapters.forApp(app)
         if (notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return skip(CaptureSkip.NOTIFICATION_GROUP)
         val extras = notification.extras ?: return skip(CaptureSkip.NOTIFICATION_METADATA)
         // A contact can call themselves “微信支付”. Reject conversation/messaging evidence.
@@ -27,7 +28,7 @@ internal object NotificationCaptureReader {
         val titleValue = extras.getCharSequence(Notification.EXTRA_TITLE) ?: return skip(CaptureSkip.NOTIFICATION_METADATA)
         if (titleValue.length > MAX_TITLE_CHARACTERS) return skipIncomplete()
         val title = titleValue.toString().trim()
-        if (!CapturePolicy.isTrustedNotificationTitle(channel, title)) return skip(CaptureSkip.NOTIFICATION_TITLE)
+        if (!adapter.matches(title)) return skip(CaptureSkip.NOTIFICATION_TITLE)
         if (CaptureDiagnostics.compatibilityActive()) return skip(CaptureSkip.COMPATIBILITY_ONLY)
 
         val text = TransientTextBuffer()
@@ -41,8 +42,8 @@ internal object NotificationCaptureReader {
         if (fragments.isEmpty()) return skip(CaptureSkip.EMPTY_TEXT)
         if (fragments.any(::hasSensitiveText)) return skip(CaptureSkip.SENSITIVE_GUARD)
         return CaptureInput(
-            source = CaptureSource.NOTIFICATION,
-            packageName = channel.packageName,
+            source = adapter.source,
+            packageName = packageName,
             texts = fragments,
             observedAt = observedAt,
             sourceKey = "notification:$key:$postTime",

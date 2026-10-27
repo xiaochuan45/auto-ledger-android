@@ -79,10 +79,9 @@ object PermissionHelper {
 
     private fun requestNotificationRecovery(context: Context, automatic: Boolean): NotificationRecoveryResult {
         val permissions = snapshot(context)
-        val settings = CapturePreferences(context).read()
         NotificationRecovery.gate.acquire(
             notificationAccess = permissions.notificationAccess,
-            captureEnabled = settings.enabled && (settings.wechatEnabled || settings.alipayEnabled),
+            captureEnabled = CapturePreferences(context).hasNotificationSources(),
             connected = permissions.notificationConnected,
             automatic = automatic,
             elapsedRealtime = SystemClock.elapsedRealtime(),

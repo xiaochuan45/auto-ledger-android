@@ -9,8 +9,8 @@ import java.time.format.ResolverStyle
 
 /** Conservative local rules over transient text. No raw evidence is returned or persisted. */
 object PaymentParser {
-    private val success = Regex("支付成功|付款成功|扣款成功|交易成功|成功支付|成功付款|成功扣款|已成功支付|已成功付款|已成功扣款")
-    private val negatedSuccess = Regex("(?:未|尚未|还未|仍未|未曾|没有|并未|无法|不能|未能|不代表|并非|不是|并不是|非)\\s*(?:支付成功|付款成功|扣款成功|交易成功|成功支付|成功付款|成功扣款)")
+    private val success = Regex("支付成功|付款成功|扣款成功|交易成功|成功支付|成功付款|成功扣款|已成功支付|已成功付款|已成功扣款|已支付|已付款|已扣款")
+    private val negatedSuccess = Regex("(?:未|尚未|还未|仍未|未曾|没有|并未|无法|不能|未能|不代表|并非|不是|并不是|非)\\s*(?:支付成功|付款成功|扣款成功|交易成功|成功支付|成功付款|成功扣款|已支付|已付款|已扣款)")
     private val failed = Regex("支付失败|付款失败|扣款失败|交易失败|支付未成功|付款未成功|扣款未成功|(?:支付|付款|交易|订单)(?:已)?取消|(?:订单|交易)(?:已)?关闭|待支付|待付款|等待支付|等待付款|未支付|未付款|尚未支付|尚未付款|支付处理中|付款处理中|扣款处理中|支付中|付款中|扣款中")
     private val sensitive = Regex("验证码|校验码|动态口令|登录密码|支付密码|一次性密码", RegexOption.IGNORE_CASE)
     private val income = Regex(
@@ -18,8 +18,8 @@ object PaymentParser {
             "(?:交易类型|收支类型|收支|资金方向)\\s*[:：]?\\s*(?:收入|收款|转入)|(?:^|\\n)[ \\t]*收入[ \\t]*(?:$|\\n)",
     )
     private val transactionIdLabels = "微信支付交易单号|支付宝交易号|支付宝交易单号|支付交易单号|交易单号|交易号"
-    private val reservedFieldName = Regex("^(?:实付金额|实际支付|实际支付金额|支付金额|付款金额|订单金额|订单总额|优惠金额|支付时间|付款时间|扣款时间|交易时间|商户名称|商户|收款方|消费平台|平台|$transactionIdLabels|商户订单号|订单号|支付成功|付款成功)$")
-    private val otherField = Regex("(?:实付金额|实际支付|支付金额|付款金额|订单金额|订单总额|优惠金额|支付时间|付款时间|扣款时间|交易时间|商户名称|商户|收款方|消费平台|平台|$transactionIdLabels|商户订单号|订单号)\\s*[:：]")
+    private val reservedFieldName = Regex("^(?:实付金额|实际支付|实际支付金额|支付金额|付款金额|订单金额|订单总额|优惠金额|支付时间|付款时间|扣款时间|交易时间|商户名称|商户|收款方|支付方式|支付渠道|付款方式|付款渠道|消费平台|平台|$transactionIdLabels|商户订单号|订单号|支付成功|付款成功)$")
+    private val otherField = Regex("(?:实付金额|实际支付|支付金额|付款金额|订单金额|订单总额|优惠金额|支付时间|付款时间|扣款时间|交易时间|商户名称|商户|收款方|支付方式|支付渠道|付款方式|付款渠道|消费平台|平台|$transactionIdLabels|商户订单号|订单号)\\s*[:：]")
     private val number = "[-+]?(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\\.[0-9]+)?"
     private val amountSuffix = "\\s*(?:人民币\\s*)?[:：]?\\s*[¥￥]?\\s*($number)(?![0-9.,])\\s*(?:元)?"
     private val actualAmount = Regex("(?:实际支付金额|实际付款金额|实际扣款金额|实际支付|实际付款|实际扣款|实付金额|实付款|实付|实扣金额|扣款金额)$amountSuffix")
@@ -37,7 +37,9 @@ object PaymentParser {
     fun parse(input: CaptureInput): ParsedPayment? {
         if (!CapturePolicy.accepts(input)) return null
         if (input.texts.size > 160 || input.texts.sumOf { it.length } > 16_384) return null
-        val channel = PaymentChannel.fromPackage(input.packageName) ?: return null
+        val app = CaptureApp.fromPackage(input.packageName) ?: return null
+        val platformNotice = input.source == CaptureSource.PLATFORM_NOTIFICATION
+        val channel = if (platformNotice) platformChannel(input.texts.joinToString("\n")) else app.paymentChannel ?: return null
         val webInput = (input.source == CaptureSource.ACCESSIBILITY && WechatWebReceipt.isCandidate(channel, input.screenClass)) ||
             (input.source == CaptureSource.USER_WEB_RECEIPT && WechatWebReceipt.isExplicitCandidate(channel, input.screenClass))
         val pieces = input.texts.map(::normalize).map { if (webInput) WechatWebReceipt.normalizeRows(it) else it }
@@ -58,8 +60,8 @@ object PaymentParser {
             else -> EntryKind.EXPENSE
         }
         if (kind != EntryKind.REFUND && income.containsMatchIn(body)) return null
-        val explicitSuccessTitle = input.source == CaptureSource.NOTIFICATION &&
-            input.title?.trim() in setOf("支付成功", "付款成功", "扣款成功", "自动扣款成功")
+        val explicitSuccessTitle = input.source in setOf(CaptureSource.NOTIFICATION, CaptureSource.PLATFORM_NOTIFICATION) &&
+            input.title?.trim() in setOf("支付成功", "付款成功", "订单支付成功", "扣款成功", "自动扣款成功")
         // A precise trusted success title is evidence; general titles (e.g. 微信支付) are not.
         val hasSuccess = explicitSuccessTitle || success.findAll(body).any { match ->
             val after = body.substring(match.range.last + 1).substringBefore('\n').trimStart()
@@ -77,6 +79,8 @@ object PaymentParser {
 
         val reasons = mutableListOf<String>()
         if (webReceipt) reasons += WechatWebReceipt.REVIEW_REASON
+        if (platformNotice) reasons += NotificationAdapters.REVIEW_REASON
+        if (channel == PaymentChannel.UNKNOWN) reasons += "未读到唯一明确的实际支付渠道"
         if (kind == EntryKind.EXPENSE && !hasSuccess) reasons += "未读到明确的付款成功状态"
         if (hasFailure) reasons += "同时包含未完成或失败状态，无法确认交易结果"
         if (kind != EntryKind.EXPENSE) reasons += when (kind) {
@@ -91,8 +95,18 @@ object PaymentParser {
             if (webReceipt && kind == EntryKind.EXPENSE && hasSuccess) webHeader.map { it.removePrefix("-") } else emptyList())
         reasons += amountResult.reasons
         val merchant = field(body, "商户名称|商户全称|收款商户|商家名称|商户|收款方|交易对方")
-        val platform = field(body, "消费平台|交易平台|平台")
-        val transactionIds = fieldValues(body, transactionIdLabels).filter { Regex("[A-Za-z0-9_-]{6,80}").matches(it) }.distinct()
+        val declaredPlatform = field(body, "消费平台|交易平台|平台")
+        val platform = if (!platformNotice) declaredPlatform else if (declaredPlatform == null ||
+            declaredPlatform == app.platform || (app == CaptureApp.JINGDONG && declaredPlatform == "京东商城") ||
+            (app == CaptureApp.MEITUAN && declaredPlatform == "美团外卖")) app.platform else {
+            reasons += "通知来源与消费平台字段不一致"; null
+        }
+        val idLabels = if (!platformNotice) transactionIdLabels else when (channel) {
+            PaymentChannel.WECHAT -> "微信支付交易单号|微信交易单号"
+            PaymentChannel.ALIPAY -> "支付宝交易号|支付宝交易单号"
+            PaymentChannel.UNKNOWN -> "(?!)"
+        }
+        val transactionIds = fieldValues(body, idLabels).filter { Regex("[A-Za-z0-9_-]{6,80}").matches(it) }.distinct()
         // On a refund screen the ordinary trade number may identify the ORIGINAL payment.
         // It must not merge two separate partial refunds as one refund event.
         val transactionId = if (kind == EntryKind.REFUND) null else transactionIds.singleOrNull()
@@ -105,10 +119,11 @@ object PaymentParser {
             reasons += "缺少交易单号和付款时间，无法区分历史页面与新付款"
         }
         val status = if (reasons.isEmpty()) RecordStatus.CONFIRMED else RecordStatus.REVIEW
-        val fingerprint = hash(
-            channel.name, kind.name, amountResult.amount?.toString(), merchant, platform,
-            paymentTime?.toString(), transactionId, status.name,
-        )
+        val identity = arrayOf(channel.name, kind.name, amountResult.amount?.toString(), merchant, platform,
+            paymentTime?.toString(), transactionId, status.name)
+        // Platform order IDs distinguish raw events but never become payment-provider strong identities.
+        val fingerprint = if (platformNotice) hash(*identity, app.name,
+            fieldValues(body, "商户订单号|订单号|订单编号").distinct().joinToString("\u0000")) else hash(*identity)
         return ParsedPayment(
             amountMinor = amountResult.amount,
             channel = channel,
@@ -119,11 +134,23 @@ object PaymentParser {
             kind = kind,
             status = status,
             transactionId = transactionId,
-            captureKey = hash(input.source.name, channel.name, input.sourceKey, fingerprint),
+            captureKey = if (platformNotice) hash(input.source.name, app.name, channel.name, input.sourceKey, fingerprint)
+                else hash(input.source.name, channel.name, input.sourceKey, fingerprint),
             contentFingerprint = fingerprint,
             source = if (webReceipt) CaptureSource.WEB_RECEIPT else input.source,
             reviewReason = reasons.distinct().takeIf { it.isNotEmpty() }?.joinToString("；"),
         )
+    }
+
+    /** A shopping app is not a payment account. Mentions in merchant names/remarks do not select a channel. */
+    private fun platformChannel(body: String): PaymentChannel {
+        val values = fieldValues(normalize(body), "支付方式|支付渠道|付款方式|付款渠道").distinct()
+        val channels = values.map { when (it) {
+            "微信", "微信支付", "微信零钱", "微信支付-零钱", "微信支付(零钱)" -> PaymentChannel.WECHAT
+            "支付宝", "支付宝支付", "支付宝余额", "支付宝支付(余额)" -> PaymentChannel.ALIPAY
+            else -> PaymentChannel.UNKNOWN
+        } }.distinct()
+        return channels.singleOrNull() ?: PaymentChannel.UNKNOWN
     }
 
     private data class AmountResult(val amount: Long?, val reasons: List<String>)

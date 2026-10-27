@@ -2,6 +2,7 @@ package io.github.xiaochuan45.autoledger.capture
 
 import io.github.xiaochuan45.autoledger.core.CaptureSource
 import io.github.xiaochuan45.autoledger.core.PaymentChannel
+import io.github.xiaochuan45.autoledger.core.CaptureApp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -22,6 +23,7 @@ enum class CaptureSkip(val label: String) {
     WEB_RECEIPT_SCOPE("微信详情未满足必要交易栏目，未进行字段识别"),
     WEB_FIELDS_UNAVAILABLE("已尝试读取，但没有完整可识别的账单字段"),
     PARSER_REJECTED("已读取输入，但没有可识别的交易证据"),
+    PAYMENT_CHANNEL_DISABLED("实际支付渠道已关闭，未保存平台线索"),
     COMPATIBILITY_ONLY("只读兼容性检查中，未读取付款内容或入账"),
 }
 
@@ -37,6 +39,8 @@ data class CaptureDiagnosticSnapshot(
     val notificationReconnectRequests: Long = 0,
     val lastNotificationReconnectAt: Long? = null,
     val notificationEvents: Long = 0,
+    val notificationAppEvents: Map<CaptureApp, Long> = emptyMap(),
+    val lastApp: CaptureApp? = null,
     val windowEvents: Long = 0,
     val supportedWindowEvents: Long = 0,
     val webReceiptMatches: Long = 0,
@@ -79,7 +83,8 @@ object CaptureDiagnostics {
             appendLine("已选渠道窗口事件：${current.windowEvents}；支持窗口：${current.supportedWindowEvents}")
             appendLine("微信详情结构命中：${current.webReceiptMatches}（仍需核对来源）")
             current.webInspection?.let { appendLine(it.summary()) }
-            appendLine("已选渠道通知事件：${current.notificationEvents}")
+            appendLine("已选来源通知事件：${current.notificationEvents}")
+            current.notificationAppEvents.forEach { (app, count) -> appendLine("来源通知 ${app.label}：$count") }
             appendLine("进入解析：${current.observedCount}；完成处理：${current.parsedCount}")
             appendLine("筛选跳过：${current.skippedCount}；异常：${current.failureCount}")
             appendLine("最近跳过：${current.lastSkip?.label ?: "无"}；来源：${current.lastSkipSource?.name ?: "无"}")
@@ -91,8 +96,10 @@ object CaptureDiagnostics {
         }
     }
 
-    @Synchronized internal fun notificationEvent() {
-        current = current.copy(notificationEvents = current.notificationEvents.incrementSafely())
+    @Synchronized internal fun notificationEvent(app: CaptureApp? = null) {
+        current = current.copy(notificationEvents = current.notificationEvents.incrementSafely(),
+            notificationAppEvents = if (app == null) current.notificationAppEvents else current.notificationAppEvents +
+                (app to (current.notificationAppEvents[app] ?: 0L).incrementSafely()))
     }
 
     @Synchronized internal fun webReceiptMatched() {
@@ -117,10 +124,11 @@ object CaptureDiagnostics {
 
     @Synchronized fun snapshot(): CaptureDiagnosticSnapshot = current
 
-    @Synchronized internal fun observed(channel: PaymentChannel, source: CaptureSource, at: Long) {
+    @Synchronized internal fun observed(channel: PaymentChannel, source: CaptureSource, at: Long, app: CaptureApp? = null) {
         current = current.copy(
             observedCount = current.observedCount.incrementSafely(),
             lastChannel = channel,
+            lastApp = app,
             lastSource = source,
             lastObservedAt = at,
         )

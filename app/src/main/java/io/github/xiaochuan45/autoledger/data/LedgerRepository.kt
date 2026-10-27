@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Room
 import androidx.room.withTransaction
 import io.github.xiaochuan45.autoledger.core.CaptureSource
+import io.github.xiaochuan45.autoledger.core.NotificationAdapters
+import io.github.xiaochuan45.autoledger.core.PaymentChannel
 import io.github.xiaochuan45.autoledger.core.EntryKind
 import io.github.xiaochuan45.autoledger.core.LedgerDraft
 import io.github.xiaochuan45.autoledger.core.ParsedPayment
@@ -41,7 +43,7 @@ class LedgerRepository internal constructor(
         // Payment identity must survive a user correcting TRANSFER/TOP_UP/etc. into EXPENSE.
         // A refund's displayed transaction number can refer to the original payment, so this
         // prototype deliberately never treats it as a distinct, reliable refund identifier.
-        val transactionId = if (payment.kind == EntryKind.REFUND) null else
+        val transactionId = if (payment.kind == EntryKind.REFUND || payment.channel == PaymentChannel.UNKNOWN) null else
             payment.transactionId?.trim()?.takeIf { it.isNotEmpty() && it.length <= 200 }
         val strongKey = transactionId?.let { hash("${payment.channel.name}\u0000$it") }
         if (strongKey != null) {
@@ -69,6 +71,7 @@ class LedgerRepository internal constructor(
                     // Two known, different transaction IDs are two independent payments.
                     (strongKey == null || previous.strongKey == null) &&
                         normalize(previous.merchant) == normalize(payment.merchant) &&
+                        (previous.platform == null || payment.platform == null || normalize(previous.platform) == normalize(payment.platform)) &&
                         timesCompatible(previous, payment)
                 }
                 .minWithOrNull(compareBy<LedgerRecord>(
@@ -81,6 +84,8 @@ class LedgerRepository internal constructor(
             !validTime -> "交易时间无效，已使用识别时间，请核对"
             payment.kind != EntryKind.EXPENSE -> "此版本仅自动确认消费；请核对资金类型，退款尚未关联原消费"
             possibleDuplicate != null -> "与已有记录相似但缺少共同交易号，请核对是否为同一笔"
+            payment.channel == PaymentChannel.UNKNOWN -> "支付渠道未知，请核对实际付款及是否已记账"
+            payment.source == CaptureSource.PLATFORM_NOTIFICATION -> payment.reviewReason ?: NotificationAdapters.REVIEW_REASON
             payment.source == CaptureSource.WEB_RECEIPT -> payment.reviewReason ?: WechatWebReceipt.REVIEW_REASON
             payment.status == RecordStatus.REVIEW -> payment.reviewReason ?: "交易状态或信息不明确，请核对"
             else -> null
@@ -196,10 +201,20 @@ class LedgerRepository internal constructor(
     private fun enrich(previous: LedgerRecord, payment: ParsedPayment, now: Long): LedgerRecord {
         // Shared-web provenance is unverified: deduplicate, but never change an existing bill.
         if (payment.source == CaptureSource.WEB_RECEIPT) return previous
+        if (payment.source == CaptureSource.PLATFORM_NOTIFICATION) {
+            // Same provider ID was matched above. Auxiliary data may fill a missing platform only;
+            // it cannot overwrite financial state, time, merchant, category or any user edit.
+            if (previous.userEdited || previous.platform != null || payment.platform.isNullOrBlank() ||
+                previous.amountMinor == null || previous.amountMinor != payment.amountMinor ||
+                previous.kind != payment.kind.name || payment.reviewReason != NotificationAdapters.REVIEW_REASON) return previous
+            return previous.copy(platform = clean(payment.platform, 200),
+                sourceTypes = unionSources(previous.sourceTypes, payment.source.name), updatedAt = now)
+        }
         val sources = unionSources(previous.sourceTypes, payment.source.name)
         if (previous.userEdited) {
             return if (sources == previous.sourceTypes) previous else previous.copy(sourceTypes = sources, updatedAt = now)
         }
+        val preferPrimary = previous.sourceTypes.split(',').all { it == CaptureSource.PLATFORM_NOTIFICATION.name || it == CaptureSource.WEB_RECEIPT.name }
         val amount = previous.amountMinor ?: payment.amountMinor?.takeIf { it in 0..MAX_AMOUNT_MINOR }
         val amountConflict = previous.reviewReason == AMOUNT_CONFLICT_REASON ||
             (previous.amountMinor != null && payment.amountMinor != null && previous.amountMinor != payment.amountMinor)
@@ -211,7 +226,7 @@ class LedgerRepository internal constructor(
             payment.occurredAt in MIN_TIME..(now + FUTURE_TOLERANCE)
         val value = previous.copy(
             amountMinor = amount,
-            merchant = previous.merchant ?: clean(payment.merchant, 200),
+            merchant = if (preferPrimary) clean(payment.merchant, 200) ?: previous.merchant else previous.merchant ?: clean(payment.merchant, 200),
             platform = previous.platform ?: clean(payment.platform, 200),
             occurredAt = if (paymentTime) payment.occurredAt else previous.occurredAt,
             timeSource = if (paymentTime) TimeSource.PAYMENT.name else previous.timeSource,

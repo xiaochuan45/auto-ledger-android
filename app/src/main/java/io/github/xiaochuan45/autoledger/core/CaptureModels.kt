@@ -1,12 +1,14 @@
 package io.github.xiaochuan45.autoledger.core
 
-enum class CaptureSource { NOTIFICATION, ACCESSIBILITY, MANUAL, WEB_RECEIPT, USER_WEB_RECEIPT }
+enum class CaptureSource { NOTIFICATION, ACCESSIBILITY, MANUAL, WEB_RECEIPT, USER_WEB_RECEIPT, PLATFORM_NOTIFICATION }
 enum class PaymentChannel(val label: String, val packageName: String) {
     WECHAT("微信", "com.tencent.mm"),
-    ALIPAY("支付宝", "com.eg.android.AlipayGphone");
+    ALIPAY("支付宝", "com.eg.android.AlipayGphone"),
+    UNKNOWN("未知", "");
 
     companion object {
-        fun fromPackage(packageName: String): PaymentChannel? = entries.firstOrNull { it.packageName == packageName }
+        val captureChannels = listOf(WECHAT, ALIPAY)
+        fun fromPackage(packageName: String): PaymentChannel? = entries.firstOrNull { it.packageName.isNotEmpty() && it.packageName == packageName }
     }
 }
 enum class EntryKind { EXPENSE, REFUND, TRANSFER, TOP_UP, WITHDRAWAL }

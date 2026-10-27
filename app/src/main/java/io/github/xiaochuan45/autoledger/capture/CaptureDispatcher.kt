@@ -2,6 +2,7 @@ package io.github.xiaochuan45.autoledger.capture
 
 import android.content.Context
 import io.github.xiaochuan45.autoledger.core.CaptureInput
+import io.github.xiaochuan45.autoledger.core.CaptureApp
 import io.github.xiaochuan45.autoledger.core.CapturePolicy
 import io.github.xiaochuan45.autoledger.core.PaymentChannel
 import io.github.xiaochuan45.autoledger.core.PaymentParser
@@ -23,8 +24,8 @@ internal class CaptureDispatcher(context: Context) {
     private val inFlight = AtomicInteger(0)
 
     fun submit(input: CaptureInput) {
-        val channel = PaymentChannel.fromPackage(input.packageName) ?: return
-        if (!preferences.isCaptureEnabled(channel)) return
+        val app = CaptureApp.fromPackage(input.packageName) ?: return
+        if (!preferences.isAppEnabled(app)) return
         if (CaptureDiagnostics.compatibilityActive()) return
         if (!CapturePolicy.accepts(input)) {
             if (input.source == io.github.xiaochuan45.autoledger.core.CaptureSource.USER_WEB_RECEIPT)
@@ -36,15 +37,19 @@ internal class CaptureDispatcher(context: Context) {
             CaptureDiagnostics.failed(CaptureFailure.QUEUE_FULL)
             return
         }
-        CaptureDiagnostics.observed(channel, input.source, input.observedAt)
+        CaptureDiagnostics.observed(app.paymentChannel ?: PaymentChannel.UNKNOWN, input.source, input.observedAt, app)
         val job = scope.launch {
             try {
-                if (!preferences.isCaptureEnabled(channel) || CaptureDiagnostics.compatibilityActive()) return@launch
+                if (!preferences.isAppEnabled(app) || CaptureDiagnostics.compatibilityActive()) return@launch
                 val payment = PaymentParser.parse(input) ?: run {
                     CaptureDiagnostics.skipped(CaptureSkip.PARSER_REJECTED, input.source)
                     return@launch
                 }
-                if (!preferences.isCaptureEnabled(channel) || CaptureDiagnostics.compatibilityActive()) return@launch
+                if (!preferences.isAppEnabled(app) || CaptureDiagnostics.compatibilityActive()) return@launch
+                if (app.supplementary && payment.channel != PaymentChannel.UNKNOWN && !preferences.isCaptureEnabled(payment.channel)) {
+                    CaptureDiagnostics.skipped(CaptureSkip.PAYMENT_CHANNEL_DISABLED, input.source)
+                    return@launch
+                }
                 LedgerRepository.get(appContext).ingest(payment)
                 CaptureDiagnostics.parsed()
             } catch (cancelled: CancellationException) {

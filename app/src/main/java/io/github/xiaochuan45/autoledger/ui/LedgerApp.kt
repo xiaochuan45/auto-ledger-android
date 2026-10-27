@@ -68,6 +68,7 @@ import io.github.xiaochuan45.autoledger.core.Amounts
 import io.github.xiaochuan45.autoledger.core.EntryKind
 import io.github.xiaochuan45.autoledger.core.LedgerDraft
 import io.github.xiaochuan45.autoledger.core.PaymentChannel
+import io.github.xiaochuan45.autoledger.core.CaptureApp
 import io.github.xiaochuan45.autoledger.core.RecordStatus
 import io.github.xiaochuan45.autoledger.data.LedgerRecord
 import io.github.xiaochuan45.autoledger.data.LedgerRepository
@@ -287,7 +288,7 @@ private fun RecordDetail(record: LedgerRecord, duplicate: LedgerRecord?, onDismi
                 DetailLine("支付渠道", channelLabel(record.channel))
                 DetailLine("消费分类", record.category)
                 DetailLine("备注", record.note.ifBlank { "无" })
-                DetailLine("来源", record.sourceTypes.split(',').joinToString("、") { when (it.trim()) { "NOTIFICATION" -> "交易通知"; "ACCESSIBILITY" -> "付款页面"; "WEB_RECEIPT" -> "微信详情（来源待核对）"; "MANUAL" -> "手动补记"; else -> "其他" } })
+                DetailLine("来源", record.sourceTypes.split(',').joinToString("、") { when (it.trim()) { "NOTIFICATION" -> "交易通知"; "PLATFORM_NOTIFICATION" -> "平台交易通知（辅助）"; "ACCESSIBILITY" -> "付款页面"; "WEB_RECEIPT" -> "微信详情（来源待核对）"; "MANUAL" -> "手动补记"; else -> "其他" } })
                 record.transactionId?.let { DetailLine("交易标识", it) }
                 if (record.status == RecordStatus.REVIEW.name) {
                     HorizontalDivider()
@@ -363,7 +364,7 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
                 if (it) recoveryResult = PermissionHelper.maybeRecoverNotificationsOnForeground(context)
             }
             HorizontalDivider()
-            PaymentChannel.entries.forEach { channel ->
+            PaymentChannel.captureChannels.forEach { channel ->
                 SettingSwitch(channel.label, "页面及交易通知", if (channel == PaymentChannel.WECHAT) settings.wechatEnabled else settings.alipayEnabled, "channel_${channel.name}") {
                     val allChannelsWereOff = !settings.wechatEnabled && !settings.alipayEnabled
                     preferences.setChannelEnabled(channel, it)
@@ -372,6 +373,17 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
                 }
             }
             Text(if (compatibility.active) "只读兼容性检查中，自动记录暂停；开关保持原设置。" else if (settings.enabled) "已开启识别。下方系统权限与服务状态仍需检查。" else "当前已暂停自动识别，手动补记仍可使用。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+        }
+        SettingsCard("消费平台交易通知") {
+            Text("按需开启，默认关闭。仅处理这些应用发出的支付类通知，不读取购物页面或聊天。", style = MaterialTheme.typography.bodySmall)
+            CaptureApp.platformApps.forEach { app ->
+                SettingSwitch(app.label, "辅助核对 · 真机待验证", preferences.isPlatformSelected(app), "app_${app.name}") {
+                    preferences.setPlatformEnabled(app, it)
+                    refreshCount++
+                    if (it) recoveryResult = PermissionHelper.maybeRecoverNotificationsOnForeground(context)
+                }
+            }
+            Text("平台、支付渠道与分类分别记录。平台通知不单独计入支出；同一支付交易号且金额一致时，可补全已有账单的平台。未知渠道不猜测，待付款、发货或促销不当作消费。", style = MaterialTheme.typography.bodySmall)
         }
         SettingsCard("系统权限与服务") {
             PermissionRow("通知使用权", permissions.notificationAccess, permissions.notificationConnected, openLabel = "打开通知权限设置", statusTag = "notification_connection_status") {
@@ -411,14 +423,15 @@ private fun SettingsPage(resumeCount: Int, foregroundRecovery: NotificationRecov
         SettingsCard("本次运行诊断") {
             Text("微信详情结构命中 ${diagnostics.webReceiptMatches} 次（结果仍需核对来源）", style = MaterialTheme.typography.bodyMedium)
             diagnostics.webInspection?.let { Text(it.summary(), style = MaterialTheme.typography.bodySmall) }
-            Text("已选渠道窗口事件 ${diagnostics.windowEvents} 次（支持类型 ${diagnostics.supportedWindowEvents} 次）\n已选渠道通知事件 ${diagnostics.notificationEvents} 次\n进入解析 ${diagnostics.observedCount} 次\n处理完成 ${diagnostics.parsedCount} 次（含重复检查）\n筛选跳过 ${diagnostics.skippedCount} 次\n异常 ${diagnostics.failureCount} 次", style = MaterialTheme.typography.bodyMedium)
+            diagnostics.notificationAppEvents.forEach { (app, count) -> Text("${app.label}通知 $count 次", style = MaterialTheme.typography.bodySmall) }
+            Text("已选渠道窗口事件 ${diagnostics.windowEvents} 次（支持类型 ${diagnostics.supportedWindowEvents} 次）\n已选来源通知事件 ${diagnostics.notificationEvents} 次\n进入解析 ${diagnostics.observedCount} 次\n处理完成 ${diagnostics.parsedCount} 次（含重复检查）\n筛选跳过 ${diagnostics.skippedCount} 次\n异常 ${diagnostics.failureCount} 次", style = MaterialTheme.typography.bodyMedium)
             Text("事件不是付款笔数；进入解析才表示已通过前面的筛选。普通页面、会话通知等可能被跳过。零事件也可能来自进程重启或系统没有提供信息。", style = MaterialTheme.typography.bodySmall)
             diagnostics.lastSkip?.let { Text("最近跳过：${it.label}", style = MaterialTheme.typography.bodySmall) }
             Text("这些是处理事件次数，不是新增账单笔数。计数仅保留在内存中，应用进程重启后归零；服务已连接仍不能保证不漏记。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
             Text("通知监听恢复请求 ${diagnostics.notificationReconnectRequests} 次", style = MaterialTheme.typography.bodySmall)
             diagnostics.lastNotificationReconnectAt?.let { Text("最近请求时间：${formatTime(it)}", style = MaterialTheme.typography.bodySmall) }
             diagnostics.lastSource?.let { source ->
-                Text("最近监听：${diagnostics.lastChannel?.label ?: "渠道未知"} · ${when (source.name) { "NOTIFICATION" -> "交易通知"; "ACCESSIBILITY" -> "付款页面"; "USER_WEB_RECEIPT" -> "主动读取微信账单"; else -> "其他来源" }}", style = MaterialTheme.typography.bodySmall)
+                Text("最近监听：${diagnostics.lastApp?.label ?: "来源未知"} · 支付 ${diagnostics.lastChannel?.label ?: "未知"} · ${when (source.name) { "NOTIFICATION" -> "交易通知"; "PLATFORM_NOTIFICATION" -> "平台交易通知（辅助）"; "ACCESSIBILITY" -> "付款页面"; "USER_WEB_RECEIPT" -> "主动读取微信账单"; else -> "其他来源" }}", style = MaterialTheme.typography.bodySmall)
             }
             diagnostics.lastObservedAt?.let { Text("监听时间：${formatTime(it)}", style = MaterialTheme.typography.bodySmall) }
             diagnostics.lastFailure?.let { failure ->
